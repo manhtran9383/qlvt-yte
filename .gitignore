@@ -1,0 +1,49 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+venv/
+env/
+.venv/
+build/
+develop-eggs/
+dist/
+eggs/
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ===== Database =====
+*.db
+*.db-shm
+*.db-wal
+qlvt.db
+
+# ===== Build artifacts =====
+*.exe
+*.exe.config
+*.manifest
+*.egg
+*.whl
+*.tar.gz
+*.zip
+# Giu spec PyInstaller (la phan cua du an)
+!QLVT-YTe.spec
+
+# ===== Inno Setup =====
+*.iss
+*.iss.log
+
+# ===== Temp / debug =====
+debug.log
+app.log
+*.log
+*.tmp
+
+# ===== OS =====
+Thumbs.db
+ehthumbs.db
+Desktop.ini
