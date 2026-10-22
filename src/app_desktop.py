@@ -39,14 +39,14 @@ TEN_VAI_TRO = {
 
 
 def ten_vai_tro(v):
-    return TEN_VAI_TRO.get(v, v)
+    return t(TEN_VAI_TRO.get(v, v))
 
 
 def nguoi_lap_cua(app):
     """Tên người lập phiếu để ghi vào sổ. Lấy từ tài khoản đang đăng nhập;
     rơi về 'Hệ thống' nếu không xác định được — không hard-code tên cứng."""
     if getattr(app, "user", None):
-        return app.user.get("ten_hien_thi") or app.user.get("username") or ""
+        return app.user.get("ten_hien_thi") or app.user.get("username") or t("Người dùng")
     return ""
 
 # màu
@@ -128,7 +128,7 @@ class App(ctk.CTk):
             self.who_role.configure(text="")
             self.avatar.configure(text="QL")
             return
-        name = self.user.get("ten_hien_thi") or self.user.get("username") or "Người dùng"
+        name = self.user.get("ten_hien_thi") or self.user.get("username") or t("Người dùng")
         role = ten_vai_tro(self.user.get("vai_tro", ""))
         self.who_name.configure(text=name)
         self.who_role.configure(text=role)
@@ -184,24 +184,24 @@ class App(ctk.CTk):
     def tu_choi(self, ten_chuc_nang):
         """Hành động dựng phòng khi gọi thẳng 1 màn hình không được phép."""
         messagebox.showerror(
-            "Không đủ quyền",
+            t("Không đủ quyền"),
             tf("Tài khoản '{}' (vai trò {}) không được phép: {}.", self.user['username'], ten_vai_tro(self.user['vai_tro']), ten_chuc_nang))
         self.show("home")
 
     # ==================== KHUNG ====================
     # Thông tin màn hình cho breadcrumb (mockup style)
     SCREEN_INFO = {
-        "home":   ("Tổng quan", "Doanh số · tồn kho · cảnh báo"),
-        "sale":   ("Bán hàng", "Xuất kho · phiếu giao hàng PDF"),
-        "in":     ("Nhập kho", "Nhập vật tư từ nhà cung cấp"),
-        "stock":  ("Tồn kho", "Danh mục vật tư & hạn sử dụng"),
-        "cust":   ("Khách hàng", "Bệnh viện · phòng khám · kho"),
-        "contract": ("Hợp đồng thầu", "Tiến độ thực hiện hợp đồng"),
-        "report": ("Báo cáo", "Doanh số · thị phần · xuất file"),
-        "kygui":  ("Ký gửi", "Quản lý hàng ký gửi"),
-        "hoadontruoc": ("Hóa đơn trước", "Quản lý hóa đơn chờ"),
-        "lichsu": ("Lịch sử KH", "Tra cứu lịch sử giao dịch"),
-        "users":  ("Tài khoản", "Tạo, sửa, khoá tài khoản và phân quyền"),
+        "home":   (t("Tổng quan"), t("Doanh số · tồn kho · cảnh báo")),
+        "sale":   (t("Bán hàng"), t("Xuất kho · phiếu giao hàng PDF")),
+        "in":     (t("Nhập kho"), t("Nhập vật tư từ nhà cung cấp")),
+        "stock":  (t("Tồn kho"), t("Danh mục vật tư & hạn sử dụng")),
+        "cust":   (t("Khách hàng"), t("Bệnh viện · phòng khám · kho")),
+        "contract": (t("Hợp đồng thầu"), t("Tiến độ thực hiện hợp đồng")),
+        "report": (t("Báo cáo"), t("Doanh số · thị phần · xuất file")),
+        "kygui":  (t("Ký gửi"), t("Quản lý hàng ký gửi")),
+        "hoadontruoc": (t("Hóa đơn trước"), t("Quản lý hóa đơn chờ")),
+        "lichsu": (t("Lịch sử KH"), t("Tra cứu lịch sử giao dịch")),
+        "users":  (t("Tài khoản"), t("Tạo, sửa, khoá tài khoản và phân quyền")),
     }
 
     def _build(self):
@@ -209,7 +209,7 @@ class App(ctk.CTk):
         sb = ctk.CTkFrame(self, width=210, fg_color="#0b2530", corner_radius=0)
         sb.pack(side="left", fill="y")
         sb.pack_propagate(False)
-        ctk.CTkLabel(sb, text="QLVT Y TẾ", font=ctk.CTkFont(size=17, weight="bold"),
+        ctk.CTkLabel(sb, text=t("QLVT Y TẾ"), font=ctk.CTkFont(size=17, weight="bold"),
                      text_color="#ffffff").pack(pady=(22, 2), padx=16, anchor="w")
         ctk.CTkLabel(sb, text=t("Vật tư tiêu hao & TBYT"), font=ctk.CTkFont(size=10),
                      text_color="#7fa3ad").pack(pady=(0, 18), padx=16, anchor="w")
@@ -217,19 +217,19 @@ class App(ctk.CTk):
         # Menu lọc theo quyền: mỗi mục gắn 1 chức năng.
         # 'xem' = chỉ cần quyền đọc; admin luôn được.
         items = [
-            ("home", "📊", "Tổng quan", "xem"),
-            ("sale", "🧾", "Bán hàng", "xuat"),
-            ("in", "📥", "Nhập kho", "nhap"),
-            ("stock", "📦", "Tồn kho", "xem"),
-            ("cust", "🏥", "Khách hàng", "khachhang"),
-            ("contract", "📑", "Hợp đồng thầu", "hopdong"),
-            ("report", "📈", "Báo cáo", "baocao"),
-            ("kygui", "📦", "Ký gửi", "kygui"),
-            ("hoadontruoc", "📄", "Hóa đơn trước", "hoadon_truoc"),
-            ("lichsu", "🔍", "Lịch sử KH", "lichsu"),
+            ("home", "📊", t("Tổng quan"), "xem"),
+            ("sale", "🧾", t("Bán hàng"), "xuat"),
+            ("in", "📥", t("Nhập kho"), "nhap"),
+            ("stock", "📦", t("Tồn kho"), "xem"),
+            ("cust", "🏥", t("Khách hàng"), "khachhang"),
+            ("contract", "📑", t("Hợp đồng thầu"), "hopdong"),
+            ("report", "📈", t("Báo cáo"), "baocao"),
+            ("kygui", "📦", t("Ký gửi"), "kygui"),
+            ("hoadontruoc", "📄", t("Hóa đơn trước"), "hoadon_truoc"),
+            ("lichsu", "🔍", t("Lịch sử KH"), "lichsu"),
         ]
         if self.user and self.user["vai_tro"] == "admin":
-            items.append(("users", "👥", "Tài khoản", "admin"))
+            items.append(("users", "👥", t("Tài khoản"), "admin"))
         self._nav_items = items
 
         self.nav = {}
@@ -312,7 +312,7 @@ class App(ctk.CTk):
         # Chặn ở tầng điều hướng: gõ thẳng scr_xxx() cũng phải bị chặn
         quyen = dict((k, q) for k, _, _, q in self._nav_items).get(key, "xem")
         if key == "users" and (not self.user or self.user["vai_tro"] != "admin"):
-            self.tu_choi("Quản lý tài khoản")
+            self.tu_choi(t("Quản lý tài khoản"))
             return
         if not self.user:
             self._hien_man_hinh_dang_nhap()
@@ -334,11 +334,11 @@ class App(ctk.CTk):
 
     # ==================== TÀI KHOẢN (chỉ admin) ====================
     def scr_users(self):
-        self.header("Tài khoản", "Tạo, sửa, khoá tài khoản và phân quyền")
+        self.header(t("Tài khoản"), t("Tạo, sửa, khoá tài khoản và phân quyền"))
         self.u_msg = ctk.CTkLabel(self.main, text="", font=ctk.CTkFont(size=11))
         self.u_msg.pack(anchor="w", pady=(0, 8))
 
-        c = self.card("Thêm tài khoản mới")
+        c = self.card(t("Thêm tài khoản mới"))
         f = ctk.CTkFrame(c, fg_color="transparent")
         f.pack(fill="x", padx=14, pady=(0, 12))
         f.grid_columnconfigure(1, weight=1)
@@ -352,11 +352,11 @@ class App(ctk.CTk):
             e.grid(row=row, column=1, sticky="w", pady=5)
             return e
 
-        self.u_ten = field(0, "Tên đăng nhập *")
-        self.u_mk = field(1, "Mật khẩu *")
+        self.u_ten = field(0, t("Tên đăng nhập *"))
+        self.u_mk = field(1, t("Mật khẩu *"))
         self.u_mk.configure(show="●")
-        self.u_hien_thi = field(2, "Tên hiển thị *")
-        self.u_email = field(3, "Email")
+        self.u_hien_thi = field(2, t("Tên hiển thị *"))
+        self.u_email = field(3, t("Email"))
         ctk.CTkLabel(f, text=t("Vai trò"), font=ctk.CTkFont(size=11, weight="bold"),
                      text_color=C_MUT, width=150).grid(row=4, column=0, sticky="w", pady=5)
         self.u_vai = ctk.CTkComboBox(f, width=240, height=30,
@@ -377,7 +377,7 @@ class App(ctk.CTk):
             row=7, column=1, sticky="w", pady=(10, 0))
 
         # bảng danh sách
-        c2 = self.card("Danh sách tài khoản")
+        c2 = self.card(t("Danh sách tài khoản"))
         b2 = ctk.CTkFrame(c2, fg_color="transparent")
         b2.pack(fill="x", padx=14, pady=(0, 12))
         self.u_box = b2
@@ -387,8 +387,8 @@ class App(ctk.CTk):
         for w in self.u_box.winfo_children():
             w.destroy()
         rows = core.ds_users(self.con)
-        cols = ["ID", "Tên đăng nhập", "Tên hiển thị", "Vai trò", "Phòng ban",
-                "Email", "Trạng thái", "Đăng nhập cuối", "Thao tác"]
+        cols = [t("ID"), t("Tên đăng nhập"), t("Tên hiển thị"), t("Vai trò"), t("Phòng ban"),
+                        t("Email"), t("Trạng thái"), t("Đăng nhập cuối"), t("Thao tác")]
         widths = [36, 130, 160, 100, 80, 170, 80, 140, 190]
         for i, col_name in enumerate(cols):
             ctk.CTkLabel(self.u_box, text=col_name, font=ctk.CTkFont(size=10, weight="bold"),
@@ -400,7 +400,7 @@ class App(ctk.CTk):
             return
         for idx, r in enumerate(rows):
             la_admin = (r["username"] == "admin")
-            st = "Đang khoá" if r["hoat_dong"] == 0 else "Hoạt động"
+            st = t("Đang khoá") if r["hoat_dong"] == 0 else t("Hoạt động")
             st_cl = C_BAD if r["hoat_dong"] == 0 else C_OK
             vals = [str(r["id"]), r["username"], r["ten_hien_thi"],
                     ten_vai_tro(r["vai_tro"]), r["khoa"] or "—",
@@ -412,7 +412,7 @@ class App(ctk.CTk):
             ctk.CTkLabel(self.u_box, text=st, font=ctk.CTkFont(size=11, weight="bold"),
                          text_color=st_cl, width=widths[6]).grid(
                 row=idx + 1, column=6, padx=4, pady=3, sticky="w")
-            ctk.CTkLabel(self.u_box, text=r["lan_cuoi_dang_nhap"] or "Chưa đăng nhập",
+            ctk.CTkLabel(self.u_box, text=r["lan_cuoi_dang_nhap"] or t("Chưa đăng nhập"),
                          font=ctk.CTkFont(size=10), text_color=C_MUT,
                          width=widths[7]).grid(row=idx + 1, column=7, padx=4, pady=3, sticky="w")
             btns = ctk.CTkFrame(self.u_box, fg_color="transparent")
@@ -553,7 +553,7 @@ class App(ctk.CTk):
             messagebox.showerror(t("Lỗi"), t("Không thể khoá tài khoản admin hệ thống."))
             return
         if r["hoat_dong"]:
-            if not messagebox.askyesno("Khoá tài khoản",
+            if not messagebox.askyesno(t("Khoá tài khoản"),
                                        tf("Khoá tài khoản '{}'? Người này sẽ không đăng nhập được nữa.", r['username'])):
                 return
             try:
@@ -576,7 +576,7 @@ class App(ctk.CTk):
         if r["username"] == "admin":
             messagebox.showerror(t("Lỗi"), t("Không thể xoá tài khoản admin hệ thống."))
             return
-        if not messagebox.askyesno("Xoá tài khoản",
+        if not messagebox.askyesno(t("Xoá tài khoản"),
                                    tf("Xoá vĩnh viễn tài khoản '{}'?\nLịch sử phiếu đã lập vẫn được giữ nguyên.", r['username'])):
             return
         try:
@@ -654,7 +654,7 @@ class App(ctk.CTk):
 
     # ==================== 1. TỔNG QUAN ====================
     def scr_home(self):
-        self.header("Tổng quan", "Bức tranh kinh doanh & cảnh báo trong ngày")
+        self.header(t("Tổng quan"), t("Bức tranh kinh doanh & cảnh báo trong ngày"))
         # Lấy ton_kho 1 lần dùng cho KPI + canh_bao
         tk_ = core.ton_kho(self.con)
         tong_gia_tri = sum(r["gia_tri_ton"] or 0 for r in tk_)
@@ -679,14 +679,14 @@ class App(ctk.CTk):
         kpis = [
             (tf("Doanh số tháng {}/{}", int(cur['thang']), cur['nam']),
              money(cur["doanh_so"]),
-             ("▲ +" if tang else "▼ -") + money(abs(chenh)) + " so với tháng trước",
+             ("▲ +" if tang else "▼ -") + money(abs(chenh)) + t(" so với tháng trước"),
              C_BRAND),
-            ("Giá trị tồn kho", money(tong_gia_tri),
+            (t("Giá trị tồn kho"), money(tong_gia_tri),
              tf("{} mã vật tư · {} đơn vị", len(tk_), fmt(tong_don_vi)), "#2f6fd1"),
-            ("Cần nhập thêm", tf("{} mã", can_nhap),
-             "Dưới mức tồn kho tối thiểu", C_WARN),
-            ("Hàng sắp hết / đã hết hạn", fmt(sap_het + het_han),
-             "Đơn vị cần ưu tiên xuất trước", C_BAD),
+            (t("Cần nhập thêm"), tf("{} mã", can_nhap),
+             t("Dưới mức tồn kho tối thiểu"), C_WARN),
+            (t("Hàng sắp hết / đã hết hạn"), fmt(sap_het + het_han),
+             t("Đơn vị cần ưu tiên xuất trước"), C_BAD),
         ]
         for i, (lb, vl, sb, cl) in enumerate(kpis):
             k = ctk.CTkFrame(row, fg_color=C_CARD, corner_radius=12,
@@ -702,7 +702,7 @@ class App(ctk.CTk):
                          justify="left").pack(pady=(0, 12), padx=12, anchor="w")
 
         # --- Biến động doanh số 24 tháng gần nhất ---
-        c = self.card("Biến động doanh số 24 tháng gần nhất")
+        c = self.card(t("Biến động doanh số 24 tháng gần nhất"))
         b = ctk.CTkFrame(c, fg_color="transparent")
         b.pack(fill="x", padx=14, pady=(0, 12))
         ctk.CTkLabel(b, text=t("Nguồn: phiếu xuất · tự động tổng hợp"),
@@ -760,17 +760,17 @@ class App(ctk.CTk):
             ctk.CTkLabel(body, text=t("Không có cảnh báo 🎉"),
                          text_color=C_OK, font=ctk.CTkFont(size=13)).pack(anchor="w")
         for x in cb["can_nhap"][:6]:
-            self._alert_row(body, "NHẬP THÊM", f"{x['ma_vt']} — {x['ten_vt']}",
+            self._alert_row(body, t("NHẬP THÊM"), f"{x['ma_vt']} — {x['ten_vt']}",
                             tf("Thiếu {}", fmt(x['thieu'])), C_WARN)
         for x in cb["het_han"][:4]:
-            self._alert_row(body, "HẾT HẠN", f"{x['ma_vt']} — {x['ten_vt']}",
+            self._alert_row(body, t("HẾT HẠN"), f"{x['ma_vt']} — {x['ten_vt']}",
                             tf("{} đơn vị", fmt(x['so_luong'])), C_BAD)
         for x in cb["sap_het"][:4]:
-            self._alert_row(body, "<3 THÁNG", f"{x['ma_vt']} — {x['ten_vt']}",
+            self._alert_row(body, t("<3 THÁNG"), f"{x['ma_vt']} — {x['ten_vt']}",
                             tf("{} đơn vị", fmt(x['so_luong'])), C_WARN)
 
         # --- Top khách hàng ---
-        c4 = self.card("Top khách hàng theo doanh số")
+        c4 = self.card(t("Top khách hàng theo doanh số"))
         b4 = ctk.CTkFrame(c4, fg_color="transparent")
         b4.pack(fill="x", padx=14, pady=(0, 12))
         krows = core.doanh_so_theo_khach(self.con)[:8]
@@ -792,7 +792,7 @@ class App(ctk.CTk):
             self._ty_trong(f, (r["doanh_so"] or 0) / kmx * 100 if kmx else 0)
 
         # --- sao lưu ---
-        c = self.card("Sao lưu dữ liệu")
+        c = self.card(t("Sao lưu dữ liệu"))
         bf = ctk.CTkFrame(c, fg_color="transparent")
         bf.pack(fill="x", padx=14, pady=(0, 12))
         ctk.CTkLabel(bf, text=t("Tạo bản backup trước khi cập nhật phần mềm hoặc định kỳ. Khôi phục từ file .db đã sao lưu."),
@@ -880,12 +880,12 @@ class App(ctk.CTk):
         try:
             path, size_mb = core.backup_db(self.con)
             if path:
-                messagebox.showinfo("Sao lưu thành công",
+                messagebox.showinfo(t("Sao lưu thành công"),
                                     tf("Đã lưu backup:\n{}\n\nDung lượng: {:.1f} MB", path, size_mb))
             else:
                 messagebox.showerror(t("Lỗi"), t("Không thể tạo backup"))
         except Exception as e:
-            messagebox.showerror("Lỗi", str(e))
+            messagebox.showerror(t("Lỗi"), str(e))
 
     def _do_restore(self):
         """Khôi phục DB từ file người dùng chọn. Tự động backup DB hiện tại trước."""
@@ -893,7 +893,7 @@ class App(ctk.CTk):
         import tkinter.messagebox as mb
         path = fd.askopenfilename(
             title=t("Chọn file backup để khôi phục"),
-            filetypes=[("Backup QLVT", "qlvt_backup_*.db"), ("SQLite DB", "*.db"), ("Tất cả", "*.*")],
+            filetypes=[("Backup QLVT", "qlvt_backup_*.db"), ("SQLite DB", "*.db"), (t("Tất cả"), "*.*")],
         )
         if not path:
             return
@@ -929,7 +929,7 @@ class App(ctk.CTk):
                 self.con = core.connect(DB_PATH, check_same_thread=False)
             except Exception:
                 pass
-            mb.showerror("Lỗi", tf("Khôi phục thất bại: {}", e))
+            mb.showerror(t("Lỗi"), tf("Khôi phục thất bại: {}", e))
 
     def _alert_row(self, parent, tag, title, detail, color):
         f = ctk.CTkFrame(parent, fg_color="transparent")
@@ -950,10 +950,10 @@ class App(ctk.CTk):
 
     # ==================== 2. BÁN HÀNG ====================
     def scr_sale(self):
-        self.header("Bán hàng", "Xuất hàng · lập biên bản giao hàng tự động")
+        self.header(t("Bán hàng"), t("Xuất hàng · lập biên bản giao hàng tự động"))
 
         # --- form ---
-        c = self.card("Thông tin giao hàng")
+        c = self.card(t("Thông tin giao hàng"))
         f = ctk.CTkFrame(c, fg_color="transparent")
         f.pack(fill="x", padx=14, pady=(0, 12))
         f.grid_columnconfigure(1, weight=1)
@@ -993,7 +993,7 @@ class App(ctk.CTk):
         self.v_nguoi.grid(row=4, column=1, sticky="w", pady=5)
 
         # --- thêm mặt hàng ---
-        c2 = self.card("Thêm mặt hàng")
+        c2 = self.card(t("Thêm mặt hàng"))
         f2 = ctk.CTkFrame(c2, fg_color="transparent")
         f2.pack(fill="x", padx=14, pady=(0, 12))
         f2.grid_columnconfigure(0, weight=1)
@@ -1031,7 +1031,7 @@ class App(ctk.CTk):
         self.v_goi_y.bind("<<ListboxSelect>>", self._chon_goi_y)
 
         # --- giỏ hàng ---
-        c3 = self.card("Chi tiết phiếu xuất")
+        c3 = self.card(t("Chi tiết phiếu xuất"))
         self.cart_box = ctk.CTkFrame(c3, fg_color="transparent")
         self.cart_box.pack(fill="x", padx=14, pady=(0, 12))
 
@@ -1108,8 +1108,8 @@ class App(ctk.CTk):
                          if k["ten_kh"] == kh), None) if kh else None
             gia, nguon = core.gia_ban(self.con, v["ma_vt"], ma_kh)
             self.v_gia.configure(
-                text=f"{v['ma_vt']} — {v['ten_vt'][:40]}  ·  ĐVT: {v['dvt']}  ·  "
-                     f"Giá {nguon}: {fmt(gia)} ₫",
+                text=tf("{0} — {1}  ·  {2}  ·  {3}: {4} ₫",
+                    v['ma_vt'], v['ten_vt'][:40], t("ĐVT"), t("Giá"), fmt(gia)),
                 text_color=C_BRAND if nguon == "theo hợp đồng" else C_MUT)
             # Tự điền giá vào ô nhập (người dùng có thể chỉnh)
             self.v_gia_nhap.delete(0, "end")
@@ -1148,7 +1148,7 @@ class App(ctk.CTk):
                     if r["ma_vt"] == v["ma_vt"]), None)
         if tk_ is not None and sl > tk_:
             if not messagebox.askyesno(
-                    "Cảnh báo tồn kho",
+                    t("Cảnh báo tồn kho"),
                     tf("Tồn kho hiện chỉ còn {} {}.\nBạn định xuất {} — vượt tồn kho {}.\n\nVẫn tiếp tục thêm vào giỏ?", fmt(tk_), v['dvt'], fmt(sl), fmt(sl - tk_))):
                 return
         kh = self.v_kh.get()
@@ -1166,7 +1166,7 @@ class App(ctk.CTk):
         self.v_sl.insert(0, "1")
         self.v_hsd.delete(0, "end")
         self.v_gia_nhap.delete(0, "end")
-        self.v_gia.configure(text=tf("Đã thêm. Giá {} ₫ ({})", fmt(gia), nguon), text_color=C_OK)
+        self.v_gia.configure(text=tf("Đã thêm. Giá {} ₫ ({})", fmt(gia), t(nguon)), text_color=C_OK)
         self._render_cart()
 
     def _render_cart(self):
@@ -1179,7 +1179,7 @@ class App(ctk.CTk):
             return
         hd = ctk.CTkFrame(self.cart_box, fg_color="#fafcfd", corner_radius=8)
         hd.pack(fill="x")
-        for i, col_name in enumerate(["#", "Mã VT", "Tên vật tư", "ĐVT", "SL", "Đơn giá", "Thành tiền", ""]):
+        for i, col_name in enumerate([t("#"), t("Mã VT"), t("Tên vật tư"), t("ĐVT"), t("SL"), t("Đơn giá"), t("Thành tiền"), ""]):
             ctk.CTkLabel(hd, text=col_name, font=ctk.CTkFont(size=10, weight="bold"),
                          text_color=C_MUT, width=[30, 90, 300, 50, 50, 110, 120, 30][i]).grid(
                 row=0, column=i, padx=4, pady=(8, 2), sticky="w")
@@ -1233,12 +1233,12 @@ class App(ctk.CTk):
         fr = ctk.CTkScrollableFrame(w, fg_color="#ffffff")
         fr.pack(fill="both", expand=True, padx=20, pady=16)
 
-        ctk.CTkLabel(fr, text="CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
+        ctk.CTkLabel(fr, text=t("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM"),
                      font=ctk.CTkFont(size=13, weight="bold")).pack()
         ctk.CTkLabel(fr, text=t("Độc lập - Tự do - Hạnh phúc"),
                      font=ctk.CTkFont(size=13, weight="bold")).pack()
         ctk.CTkLabel(fr, text="———————————", text_color=C_MUT).pack()
-        ctk.CTkLabel(fr, text="BIÊN BẢN GIAO HÀNG",
+        ctk.CTkLabel(fr, text=t("BIÊN BẢN GIAO HÀNG"),
                      font=ctk.CTkFont(size=18, weight="bold")).pack(pady=(8, 2))
         ctk.CTkLabel(fr, text=tf("Số: {} /BBGH", bb['so_phieu']),
                      font=ctk.CTkFont(size=11), text_color=C_MUT).pack()
@@ -1275,7 +1275,7 @@ class App(ctk.CTk):
 
         tb = ctk.CTkFrame(fr, fg_color="#ffffff", border_width=1, border_color="#444444")
         tb.pack(fill="x")
-        for i, col_name in enumerate(["STT", "Tên vật tư", "ĐVT", "Tổng SL", "Đơn giá", "Thành tiền"]):
+        for i, col_name in enumerate([t("STT"), t("Tên vật tư"), t("ĐVT"), t("Tổng SL"), t("Đơn giá"), t("Thành tiền")]):
             ctk.CTkLabel(tb, text=col_name, font=ctk.CTkFont(size=10, weight="bold"),
                          text_color="#000000", width=[36, 300, 50, 60, 100, 110][i]).grid(
                 row=0, column=i, padx=4, pady=6, sticky="w")
@@ -1300,7 +1300,7 @@ class App(ctk.CTk):
         sg = ctk.CTkFrame(fr, fg_color="transparent")
         sg.pack(fill="x", pady=(16, 0))
         sg.grid_columnconfigure((0, 1), weight=1)
-        for i, col_name in enumerate(["ĐẠI DIỆN BÊN NHẬN", "ĐẠI DIỆN BÊN GIAO"]):
+        for i, col_name in enumerate([t("ĐẠI DIỆN BÊN NHẬN"), t("ĐẠI DIỆN BÊN GIAO")]):
             ctk.CTkLabel(sg, text=col_name, font=ctk.CTkFont(size=11, weight="bold")).grid(
                 row=0, column=i, padx=20, sticky="w")
             ctk.CTkLabel(sg, text=t("(Ký, ghi rõ họ tên)"),
@@ -1317,7 +1317,7 @@ class App(ctk.CTk):
             bb = core.bien_ban(self.con)
             if not bb:
                 return
-            path, loi = core.xuat_pdf(self.con, bb["so_phieu"])
+            path, loi = core.xuat_pdf(self.con, bb["so_phieu"], get_lang())
             if loi or not path:
                 self.v_gia.configure(text=tf("Không xuất được PDF: {}", loi), text_color=C_BAD)
                 return
@@ -1327,8 +1327,8 @@ class App(ctk.CTk):
 
     # ==================== 3. NHẬP KHO ====================
     def scr_in(self):
-        self.header("Nhập kho", "Nhập nhiều mã vật tư → tồn kho & cảnh báo hạn dùng tự cập nhật")
-        c = self.card("Phiếu nhập kho")
+        self.header(t("Nhập kho"), t("Nhập nhiều mã vật tư → tồn kho & cảnh báo hạn dùng tự cập nhật"))
+        c = self.card(t("Phiếu nhập kho"))
         f = ctk.CTkFrame(c, fg_color="transparent")
         f.pack(fill="x", padx=14, pady=(0, 12))
         f.grid_columnconfigure(1, weight=1)
@@ -1387,7 +1387,7 @@ class App(ctk.CTk):
         self.n_goi_y.bind("<<ListboxSelect>>", self._chon_goi_y_nhap)
 
         # --- giỏ phiếu nhập ---
-        c3 = self.card("Chi tiết phiếu nhập")
+        c3 = self.card(t("Chi tiết phiếu nhập"))
         self.cart_nhap_box = ctk.CTkFrame(c3, fg_color="transparent")
         self.cart_nhap_box.pack(fill="x", padx=14, pady=(0, 12))
 
@@ -1454,8 +1454,8 @@ class App(ctk.CTk):
             return
         hd = ctk.CTkFrame(self.cart_nhap_box, fg_color="#fafcfd", corner_radius=8)
         hd.pack(fill="x")
-        for i, col_name in enumerate(["#", "Mã VT", "Tên vật tư", "ĐVT", "SL", "Đơn giá",
-                              "Số lô", "HSD", "Xóa"]):
+        for i, col_name in enumerate([t("#"), t("Mã VT"), t("Tên vật tư"), t("ĐVT"), t("SL"), t("Đơn giá"),
+                                      t("Số lô"), t("HSD"), t("Xóa")]):
             ctk.CTkLabel(
                 hd, text=col_name, font=ctk.CTkFont(size=10, weight="bold"),
                 text_color=C_MUT, width=[30, 90, 300, 50, 50, 110, 110, 120, 40][i],
@@ -1633,7 +1633,7 @@ class App(ctk.CTk):
                                             command=lambda v: self._doi_ngon_ngu_login(v, dlg))
         login_lang_combo.pack(side="right")
 
-        ctk.CTkLabel(card, text="QLVT Y TẾ", font=ctk.CTkFont(size=22, weight="bold"),
+        ctk.CTkLabel(card, text=t("QLVT Y TẾ"), font=ctk.CTkFont(size=22, weight="bold"),
                      text_color=C_BRAND).pack(pady=(30, 2), padx=30, anchor="w")
         ctk.CTkLabel(card, text=t("Quản lý vật tư y tế — đăng nhập để tiếp tục"),
                      font=ctk.CTkFont(size=11), text_color=C_MUT).pack(padx=30, anchor="w")
@@ -1702,14 +1702,14 @@ class App(ctk.CTk):
         self._cap_nhat_topbar_user()
         if user.get("phai_doi_mk"):
             messagebox.showwarning(
-                "Đổi mật khẩu bắt buộc",
-                "Tài khoản này đang dùng mật khẩu mặc định.\nVui lòng đổi mật khẩu ngay.")
+                t("Đổi mật khẩu bắt buộc"),
+                t("Tài khoản này đang dùng mật khẩu mặc định.\nVui lòng đổi mật khẩu ngay."))
             self._doi_mat_khau()
 
 
     def scr_stock(self):
-        self.header("Tồn kho", "Theo dõi hạn sử dụng & đề xuất nhập thêm")
-        c = self.card("Số lượng tồn kho")
+        self.header(t("Tồn kho"), t("Theo dõi hạn sử dụng & đề xuất nhập thêm"))
+        c = self.card(t("Số lượng tồn kho"))
         b = ctk.CTkFrame(c, fg_color="transparent")
         b.pack(fill="x", padx=14, pady=(0, 12))
         rows = core.ton_kho(con=self.con)
@@ -1719,7 +1719,7 @@ class App(ctk.CTk):
             return
         hd = ctk.CTkFrame(b, fg_color="#fafcfd", corner_radius=8)
         hd.pack(fill="x")
-        for i, col_name in enumerate(["Mã VT", "Tên vật tư", "ĐVT", "Tồn", "Tối thiểu", "Giá trị", "Trạng thái", ""]):
+        for i, col_name in enumerate([t("Mã VT"), t("Tên vật tư"), t("ĐVT"), t("Tồn"), t("Tối thiểu"), t("Giá trị"), t("Trạng thái"), ""]):
             ctk.CTkLabel(hd, text=col_name, font=ctk.CTkFont(size=10, weight="bold"),
                          text_color=C_MUT, width=[90, 300, 50, 60, 70, 110, 130, 60][i]).grid(
                 row=0, column=i, padx=4, pady=(8, 2), sticky="w")
@@ -1727,9 +1727,9 @@ class App(ctk.CTk):
             tk_ = r["ton_kho"] or 0
             mn = r["ton_toi_thieu"] or 0
             if mn > 0 and tk_ < mn:
-                st, cl = "Cần nhập", C_WARN
+                st, cl = t("Cần nhập"), C_WARN
             else:
-                st, cl = "Ổn định", C_OK
+                st, cl = t("Ổn định"), C_OK
             vals = [r["ma_vt"], r["ten_vt"][:40], r["dvt"], fmt(tk_), fmt(mn),
                     money(r["gia_tri_ton"]), st]
             for i, v in enumerate(vals):
@@ -1768,15 +1768,15 @@ class App(ctk.CTk):
 
     # ==================== 5. KHÁCH HÀNG ====================
     def scr_cust(self):
-        self.header("Khách hàng", "Thêm mới / cập nhật thông tin khách hàng")
+        self.header(t("Khách hàng"), t("Thêm mới / cập nhật thông tin khách hàng"))
         # Form thêm/sửa
-        f = self.card("Thông tin khách hàng")
+        f = self.card(t("Thông tin khách hàng"))
         fr = ctk.CTkFrame(f, fg_color="transparent")
         fr.pack(fill="x", padx=14, pady=(0, 6))
         self._kh_edit = {"ma": None}
         self._kh_widgets = {}
-        fields = [("ma", "Mã KH (trống = tự tạo)", 120), ("ten", "Tên khách hàng *", 260),
-                  ("dc", "Địa chỉ", 300), ("mst", "Mã số thuế", 140), ("kv", "Khu vực", 120)]
+        fields = [("ma", t("Mã KH (trống = tự tạo)"), 120), ("ten", t("Tên khách hàng *"), 260),
+                  ("dc", t("Địa chỉ"), 300), ("mst", t("Mã số thuế"), 140), ("kv", t("Khu vực"), 120)]
         for i, (k, lb, w) in enumerate(fields):
             ctk.CTkLabel(fr, text=lb, font=ctk.CTkFont(size=10),
                          text_color=C_MUT, width=w, anchor="w").grid(
@@ -1794,13 +1794,13 @@ class App(ctk.CTk):
         self._kh_msg.pack(padx=14, pady=(0, 10))
 
         # Bảng danh sách
-        c = self.card("Danh sách khách hàng")
+        c = self.card(t("Danh sách khách hàng"))
         b = ctk.CTkFrame(c, fg_color="transparent")
         b.pack(fill="x", padx=14, pady=(0, 12))
         rows = core.ds_khachhang(self.con)
         hd = ctk.CTkFrame(b, fg_color="#fafcfd", corner_radius=8)
         hd.pack(fill="x")
-        for i, col_name in enumerate(["Tên khách hàng", "Mã", "Khu vực", "Mã số thuế", "Địa chỉ"]):
+        for i, col_name in enumerate([t("Tên khách hàng"), t("Mã"), t("Khu vực"), t("Mã số thuế"), t("Địa chỉ")]):
             ctk.CTkLabel(hd, text=col_name, font=ctk.CTkFont(size=10, weight="bold"),
                          text_color=C_MUT, width=[250, 60, 90, 130, 330][i]).grid(
                 row=0, column=i, padx=4, pady=(8, 2), sticky="w")
@@ -1875,9 +1875,9 @@ class App(ctk.CTk):
 
     # ==================== 6. HỢP ĐỒNG ====================
     def scr_contract(self):
-        self.header("Hợp đồng thầu", "Thêm hợp đồng & tiến độ thực hiện")
+        self.header(t("Hợp đồng thầu"), t("Thêm hợp đồng & tiến độ thực hiện"))
         # Form thêm hợp đồng
-        f = self.card("Thêm hợp đồng mới")
+        f = self.card(t("Thêm hợp đồng mới"))
         fr = ctk.CTkFrame(f, fg_color="transparent")
         fr.pack(fill="x", padx=14, pady=(0, 12))
         fr.grid_columnconfigure(1, weight=1)
@@ -1923,7 +1923,7 @@ class App(ctk.CTk):
         ctk.CTkButton(fr, text=t("💾 Lưu HĐ"), width=100, height=28, fg_color=C_BRAND,
                       command=self._luu_hop_dong).grid(row=3, column=3, padx=2)
 
-        c = self.card("Tiến độ hợp đồng")
+        c = self.card(t("Tiến độ hợp đồng"))
         b = ctk.CTkFrame(c, fg_color="transparent")
         b.pack(fill="x", padx=14, pady=(0, 12))
         rows = core.tien_do_hop_dong(self.con)
@@ -1933,7 +1933,7 @@ class App(ctk.CTk):
             return
         hd = ctk.CTkFrame(b, fg_color="#fafcfd", corner_radius=8)
         hd.pack(fill="x")
-        for i, col_name in enumerate(["Số HĐ", "Khách hàng", "Mã VT", "Tổng SL", "Đã TH", "Còn lại", "Tiến độ"]):
+        for i, col_name in enumerate([t("Số HĐ"), t("Khách hàng"), t("Mã VT"), t("Tổng SL"), t("Đã TH"), t("Còn lại"), t("Tiến độ")]):
             ctk.CTkLabel(hd, text=col_name, font=ctk.CTkFont(size=10, weight="bold"),
                          text_color=C_MUT, width=[110, 200, 90, 60, 60, 60, 130][i]).grid(
                 row=0, column=i, padx=4, pady=(8, 2), sticky="w")
@@ -1953,7 +1953,7 @@ class App(ctk.CTk):
 
     # ==================== 7. BÁO CÁO ====================
     def scr_report(self):
-        self.header("Báo cáo", "Tháng · Quý · Thị phần — chọn năm, xuất PDF")
+        self.header(t("Báo cáo"), t("Tháng · Quý · Thị phần — chọn năm, xuất PDF"))
         # hàng chọn năm + nút xuất PDF
         f0 = ctk.CTkFrame(self.main, fg_color="transparent")
         f0.pack(fill="x", pady=(0, 8))
@@ -1974,10 +1974,10 @@ class App(ctk.CTk):
                                             selected_hover_color="#12a3af",
                                             command=lambda v: self._draw_report(v))
         self.r_tab.pack(anchor="w", pady=(0, 10))
-        self.r_tab.set("Tháng")
+        self.r_tab.set(t("Tháng"))
         self.r_box = ctk.CTkFrame(self.main, fg_color="transparent")
         self.r_box.pack(fill="x")
-        self._draw_report("Tháng")
+        self._draw_report(t("Tháng"))
 
     def _ds_nam_co_du_lieu(self):
         """Các năm có dữ liệu bán hàng (từ phiếu xuất)."""
@@ -1989,7 +1989,7 @@ class App(ctk.CTk):
     def _xuat_baocao_pdf(self):
         import tkinter.filedialog as fd
         try:
-            loai = {"Tháng": "m", "Quý": "q", "Thị phần": "s"}.get(self.r_tab.get(), "m")
+            loai = {t("Tháng"): "m", t("Quý"): "q", t("Thị phần"): "s"}.get(self.r_tab.get(), "m")
             nam = int(self.r_nam.get())
             # Người dùng chọn vị trí lưu file PDF
             path = fd.asksaveasfilename(
@@ -2000,19 +2000,19 @@ class App(ctk.CTk):
             )
             if not path:
                 return
-            path, loi = core.xuat_baocao_pdf(self.con, loai, nam, path)
+            path, loi = core.xuat_baocao_pdf(self.con, loai, nam, path, get_lang())
             if loi or not path:
-                messagebox.showerror("Lỗi", tf("Không xuất được PDF: {}", loi))
+                messagebox.showerror(t("Lỗi"), tf("Không xuất được PDF: {}", loi))
                 return
-            messagebox.showinfo("Xuất PDF", tf("Đã lưu:\n{}", path))
+            messagebox.showinfo(t("Xuất PDF"), tf("Đã lưu:\n{}", path))
         except Exception as e:
-            messagebox.showerror("Lỗi", str(e))
+            messagebox.showerror(t("Lỗi"), str(e))
 
     def _draw_report(self, tab):
         for w in self.r_box.winfo_children():
             w.destroy()
         nam = int(self.r_nam.get()) if self.r_nam.get().isdigit() else date.today().year
-        if tab == "Tháng":
+        if tab == t("Tháng"):
             rows = core.doanh_so_thang(self.con, nam)
             c = self.card(tf("Doanh số theo tháng — {}", nam), parent=self.r_box)
             b = ctk.CTkFrame(c, fg_color="transparent")
@@ -2038,7 +2038,7 @@ class App(ctk.CTk):
             # Bảng chi tiết
             hd = ctk.CTkFrame(b, fg_color="#fafcfd", corner_radius=8)
             hd.pack(fill="x")
-            for i, col_name in enumerate(["Tháng", "Số lượng", "Doanh số"]):
+            for i, col_name in enumerate([t("Tháng"), t("Số lượng"), t("Doanh số")]):
                 ctk.CTkLabel(hd, text=col_name, font=ctk.CTkFont(size=10, weight="bold"),
                              text_color=C_MUT, width=[80, 100, 150][i]).grid(
                     row=0, column=i, padx=4, pady=(6, 2), sticky="w")
@@ -2048,7 +2048,7 @@ class App(ctk.CTk):
                     ctk.CTkLabel(hd, text=v, font=ctk.CTkFont(size=11),
                                  text_color=C_INK, width=[80, 100, 150][i]).grid(
                         row=idx + 1, column=i, padx=4, pady=2, sticky="w")
-        elif tab == "Quý":
+        elif tab == t("Quý"):
             # Tính quý từ dữ liệu tháng (tránh query lại)
             thang_rows = core.doanh_so_thang(self.con, nam)
             q = {}
@@ -2081,7 +2081,7 @@ class App(ctk.CTk):
                                font=("Segoe UI", 8), fill=C_MUT)
             hd = ctk.CTkFrame(b, fg_color="#fafcfd", corner_radius=8)
             hd.pack(fill="x")
-            for i, col_name in enumerate(["Quý", "Số lượng", "Doanh số"]):
+            for i, col_name in enumerate([t("Quý"), t("Số lượng"), t("Doanh số")]):
                 ctk.CTkLabel(hd, text=col_name, font=ctk.CTkFont(size=10, weight="bold"),
                              text_color=C_MUT, width=[80, 100, 150][i]).grid(
                     row=0, column=i, padx=4, pady=(6, 2), sticky="w")
@@ -2102,7 +2102,7 @@ class App(ctk.CTk):
             # Bảng chi tiết thị phần
             hd = ctk.CTkFrame(b, fg_color="#fafcfd", corner_radius=8)
             hd.pack(fill="x")
-            for i, col_name in enumerate(["Khách hàng", "Thị phần", "Doanh số"]):
+            for i, col_name in enumerate([t("Khách hàng"), t("Thị phần"), t("Doanh số")]):
                 ctk.CTkLabel(hd, text=col_name, font=ctk.CTkFont(size=10, weight="bold"),
                              text_color=C_MUT, width=[250, 80, 150][i]).grid(
                     row=0, column=i, padx=4, pady=(6, 2), sticky="w")
@@ -2119,10 +2119,10 @@ class App(ctk.CTk):
     # ==================== 9. KÝ GỬI ====================
     def scr_kygui(self):
         """Màn hình Ký gửi: lập phiếu ký gửi / xuất ký gửi, xem tồn kho ký gửi & lịch sử."""
-        self.header("Ký gửi", "Quản lý hàng ký gửi — xuất ký gửi cho khách hàng")
+        self.header(t("Ký gửi"), t("Quản lý hàng ký gửi — xuất ký gửi cho khách hàng"))
 
         # --- form ---
-        c = self.card("Phiếu ký gửi")
+        c = self.card(t("Phiếu ký gửi"))
         f = ctk.CTkFrame(c, fg_color="transparent")
         f.pack(fill="x", padx=14, pady=(0, 12))
         f.grid_columnconfigure(1, weight=1)
@@ -2170,7 +2170,7 @@ class App(ctk.CTk):
             row=7, column=1, sticky="w", pady=(10, 0))
 
         # --- tồn kho ký gửi ---
-        c2 = self.card("Tồn kho ký gửi")
+        c2 = self.card(t("Tồn kho ký gửi"))
         b2 = ctk.CTkFrame(c2, fg_color="transparent")
         b2.pack(fill="x", padx=14, pady=(0, 12))
         rows_ton = core.ton_kho_kygui(self.con)
@@ -2180,7 +2180,7 @@ class App(ctk.CTk):
         else:
             hd = ctk.CTkFrame(b2, fg_color="#fafcfd", corner_radius=8)
             hd.pack(fill="x")
-            for i, col_name in enumerate(["Khách hàng", "Mã VT", "Tên vật tư", "ĐVT", "Tồn ký gửi"]):
+            for i, col_name in enumerate([t("Khách hàng"), t("Mã VT"), t("Tên vật tư"), t("ĐVT"), t("Tồn ký gửi")]):
                 ctk.CTkLabel(hd, text=col_name, font=ctk.CTkFont(size=10, weight="bold"),
                              text_color=C_MUT, width=[200, 90, 300, 50, 90][i]).grid(
                     row=0, column=i, padx=4, pady=(8, 2), sticky="w")
@@ -2193,7 +2193,7 @@ class App(ctk.CTk):
                         row=idx + 1, column=i, padx=4, pady=3, sticky="w")
 
         # --- lịch sử phiếu ký gửi ---
-        c3 = self.card("Lịch sử phiếu ký gửi")
+        c3 = self.card(t("Lịch sử phiếu ký gửi"))
         b3 = ctk.CTkFrame(c3, fg_color="transparent")
         b3.pack(fill="x", padx=14, pady=(0, 12))
         rows_kygui = core.ds_phieu(self.con, loai="KYGUI", limit=10)
@@ -2204,11 +2204,11 @@ class App(ctk.CTk):
         else:
             hd2 = ctk.CTkFrame(b3, fg_color="#fafcfd", corner_radius=8)
             hd2.pack(fill="x")
-            for i, col_name in enumerate(["Số phiếu", "Loại", "Ngày", "Mã VT", "Tên VT", "SL"]):
+            for i, col_name in enumerate([t("Số phiếu"), t("Loại"), t("Ngày"), t("Mã VT"), t("Tên VT"), t("SL")]):
                 ctk.CTkLabel(hd2, text=col_name, font=ctk.CTkFont(size=10, weight="bold"),
                              text_color=C_MUT, width=[110, 110, 90, 90, 280, 50][i]).grid(
                     row=0, column=i, padx=4, pady=(8, 2), sticky="w")
-            all_rows = [(r, "Ký gửi") for r in rows_kygui] + [(r, "Xuất ký gửi") for r in rows_xuat]
+            all_rows = [(r, t("Ký gửi")) for r in rows_kygui] + [(r, t("Xuất ký gửi")) for r in rows_xuat]
             for idx, (r, loai) in enumerate(all_rows):
                 vals = [r["so_phieu"], loai, r["ngay_phieu"], r["ma_vt"],
                         (r["ten_vt"] or "")[:38], fmt(r["so_luong"])]
@@ -2255,10 +2255,10 @@ class App(ctk.CTk):
     # ==================== 10. HÓA ĐƠN TRƯỚC ====================
     def scr_hoadontruoc(self):
         """Màn hình Hóa đơn trước: xuất hàng trước, hóa đơn sau — theo dõi tiến độ giao hàng."""
-        self.header("Hóa đơn trước", "Xuất hàng trước, xuất hóa đơn sau — theo dõi tiến độ giao")
+        self.header(t("Hóa đơn trước"), t("Xuất hàng trước, xuất hóa đơn sau — theo dõi tiến độ giao"))
 
         # --- form ---
-        c = self.card("Phiếu xuất hóa đơn trước")
+        c = self.card(t("Phiếu xuất hóa đơn trước"))
         f = ctk.CTkFrame(c, fg_color="transparent")
         f.pack(fill="x", padx=14, pady=(0, 12))
         f.grid_columnconfigure(1, weight=1)
@@ -2310,7 +2310,7 @@ class App(ctk.CTk):
             row=8, column=1, sticky="w", pady=(10, 0))
 
         # --- bảng tiến độ ---
-        c2 = self.card("Tiến độ hóa đơn trước")
+        c2 = self.card(t("Tiến độ hóa đơn trước"))
         b2 = ctk.CTkFrame(c2, fg_color="transparent")
         b2.pack(fill="x", padx=14, pady=(0, 12))
         rows = core.tien_do_hoadon_truoc(self.con)
@@ -2320,8 +2320,8 @@ class App(ctk.CTk):
         else:
             hd = ctk.CTkFrame(b2, fg_color="#fafcfd", corner_radius=8)
             hd.pack(fill="x")
-            for i, col_name in enumerate(["Số HĐ", "Khách hàng", "Mã VT", "Tên VT",
-                                   "SL đã xuất", "SL đã giao", "Còn lại"]):
+            for i, col_name in enumerate([t("Số HĐ"), t("Khách hàng"), t("Mã VT"), t("Tên VT"),
+                                   t("SL đã xuất"), t("SL đã giao"), t("Còn lại")]):
                 ctk.CTkLabel(hd, text=col_name, font=ctk.CTkFont(size=10, weight="bold"),
                              text_color=C_MUT, width=[110, 200, 90, 280, 80, 80, 60][i]).grid(
                     row=0, column=i, padx=4, pady=(8, 2), sticky="w")
@@ -2378,10 +2378,10 @@ class App(ctk.CTk):
     # ==================== 11. LỊCH SỬ KHÁCH HÀNG ====================
     def scr_lichsu(self):
         """Màn hình Lịch sử khách hàng: tra cứu giao dịch theo khách hàng & khoảng thời gian."""
-        self.header("Lịch sử khách hàng", "Tra cứu giao dịch theo khách hàng & khoảng thời gian")
+        self.header(t("Lịch sử khách hàng"), t("Tra cứu giao dịch theo khách hàng & khoảng thời gian"))
 
         # --- form tìm kiếm ---
-        c = self.card("Tìm kiếm")
+        c = self.card(t("Tìm kiếm"))
         f = ctk.CTkFrame(c, fg_color="transparent")
         f.pack(fill="x", padx=14, pady=(0, 12))
         f.grid_columnconfigure(1, weight=1)
@@ -2416,7 +2416,7 @@ class App(ctk.CTk):
             row=4, column=1, sticky="w", pady=(10, 0))
 
         # --- bảng kết quả ---
-        c2 = self.card("Kết quả")
+        c2 = self.card(t("Kết quả"))
         b2 = ctk.CTkFrame(c2, fg_color="transparent")
         b2.pack(fill="x", padx=14, pady=(0, 12))
         self.ls_box = b2  # lưu để _tim_lichsu render vào
@@ -2444,8 +2444,8 @@ class App(ctk.CTk):
             return
         hd = ctk.CTkFrame(self.ls_box, fg_color="#fafcfd", corner_radius=8)
         hd.pack(fill="x")
-        for i, col_name in enumerate(["Số phiếu", "Loại", "Ngày", "Mã VT", "Tên VT",
-                               "SL", "Đơn giá", "Thành tiền"]):
+        for i, col_name in enumerate([t("Số phiếu"), t("Loại"), t("Ngày"), t("Mã VT"), t("Tên VT"),
+                               t("SL"), t("Đơn giá"), t("Thành tiền")]):
             ctk.CTkLabel(hd, text=col_name, font=ctk.CTkFont(size=10, weight="bold"),
                          text_color=C_MUT, width=[110, 100, 90, 90, 250, 50, 100, 110][i]).grid(
                     row=0, column=i, padx=4, pady=(8, 2), sticky="w")

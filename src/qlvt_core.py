@@ -21,6 +21,7 @@ import sys
 import time
 import random
 from datetime import datetime, date
+from i18n import t, tf
 
 
 def _resource_dir():
@@ -154,11 +155,11 @@ def ghi_phieu(con, loai_phieu, ngay_phieu, ma_vt, so_luong, don_gia,
     so_luong: dương cho NHAP/KYGUI, dương cho XUAT (view tự trừ dấu)
     """
     if so_luong is None or float(so_luong) == 0:
-        raise ValueError("Số lượng phải khác 0")
+        raise ValueError(t("Số lượng phải khác 0"))
     if not ma_vt:
-        raise ValueError("Thiếu mã vật tư")
+        raise ValueError(t("Thiếu mã vật tư"))
     if not con.execute("SELECT 1 FROM dm_vattu WHERE ma_vt=?", (ma_vt,)).fetchone():
-        raise ValueError(f"Mã vật tư '{ma_vt}' không tồn tại trong danh mục")
+        raise ValueError(tf("Mã vật tư '{}' không tồn tại trong danh mục", ma_vt))
 
     # Khi GIAO HÀNG (XUAT) kèm số hóa đơn: không được giao nhiều hơn đã xuất hóa đơn.
     # Check ở đây (không chỉ ở xuat_hoadon_truoc) vì người dùng có thể giao trước mà xuất HĐ sau.
@@ -173,7 +174,7 @@ def ghi_phieu(con, loai_phieu, ngay_phieu, ma_vt, so_luong, don_gia,
             (so_hoa_don,)).fetchone()[0] or 0
         if da_giao + float(so_luong) > da_xuat_hd:
             raise ValueError(
-                f"Giao {so_luong} sẽ vượt số đã xuất hóa đơn {so_hoa_don} "
+                tf("Giao {} sẽ vượt số đã xuất hóa đơn {}", so_luong, so_hoa_don) + 
                 f"(đã xuất HĐ {da_xuat_hd}, đã giao {da_giao})")
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -556,9 +557,9 @@ def ghi_phieu_kygui(con, loai, ngay, ma_vt, so_luong, ma_kh,
     KYGUI = chuyển từ kho công ty sang kho KH (tài sản vẫn của cty).
     XUAT_KYGUI = bán hàng trong số ký gửi (doanh số được ghi nhận)."""
     if loai not in ("KYGUI", "XUAT_KYGUI"):
-        raise ValueError(f"Loại phiếu ký gửi không hợp lệ: {loai}")
+        raise ValueError(tf("Loại phiếu ký gửi không hợp lệ: {}", loai))
     if not ma_kh:
-        raise ValueError("Phiếu ký gửi phải có khách hàng")
+        raise ValueError(t("Phiếu ký gửi phải có khách hàng"))
     # Kiểm tra đủ hàng trong ký gửi cho XUAT_KYGUI
     if loai == "XUAT_KYGUI":
         ton = con.execute(
@@ -567,7 +568,7 @@ def ghi_phieu_kygui(con, loai, ngay, ma_vt, so_luong, ma_kh,
             "FROM phieu_giaodich WHERE ma_vt=? AND ma_kh=?",
             (ma_vt, ma_kh)).fetchone()[0] or 0
         if ton < float(so_luong):
-            raise ValueError(f"Ký gửi chỉ còn {ton} {ma_vt} tại KH này, không đủ xuất {so_luong}")
+            raise ValueError(tf("Ký gửi chỉ còn {} {} tại KH này, không đủ xuất {}", ton, ma_vt, so_luong))
     gia, _ = gia_ban(con, ma_vt, ma_kh)
     return ghi_phieu(con, loai, ngay, ma_vt, so_luong, gia,
                      ma_kh=ma_kh, khoa_nhan=khoa_nhan, nguoi_goi=nguoi_goi,
@@ -583,7 +584,7 @@ def xuat_hoadon_truoc(con, ngay, ma_vt, so_luong, ma_kh, so_hoa_don,
     """Phiếu xuất hóa đơn trước: xuất hóa đơn nhưng chưa giao hàng đủ.
     Số lượng đã giao = tổng phiếu XUAT có cùng so_hoa_don."""
     if not so_hoa_don:
-        raise ValueError("Thiếu số hóa đơn")
+        raise ValueError(t("Thiếu số hóa đơn"))
     # Kiểm tra không vượt quá số đã xuất hóa đơn
     da_xuat_hd = con.execute(
         "SELECT COALESCE(SUM(so_luong),0) FROM phieu_giaodich "
@@ -596,7 +597,7 @@ def xuat_hoadon_truoc(con, ngay, ma_vt, so_luong, ma_kh, so_hoa_don,
     # Logic: tổng đã xuất hóa độn (kể cả phiếu đang tạo) phải >= tổng đã giao.
     # Nếu không, sẽ xuất hóa độn nhiều hơn hàng thực tế giao.
     if da_giao > da_xuat_hd + float(so_luong):
-        raise ValueError(f"Đã giao {da_giao} nhưng chỉ xuất hóa độn {da_xuat_hd} "
+        raise ValueError(tf("Đã giao {} nhưng chỉ xuất hóa độn {}", da_giao, da_xuat_hd) + 
                          f"(thêm phiếu này = {da_xuat_hd + float(so_luong)}). "
                          f"Không thể giao nhiều hơn đã xuất hóa độn.")
     gia, _ = gia_ban(con, ma_vt, ma_kh)
@@ -688,7 +689,7 @@ def doi_mat_khau(con, user_id, mat_khau_cu, mat_khau_moi, kiem_tra_cu=True):
     if not row:
         return "Không tìm thấy tài khoản"
     if kiem_tra_cu and not verify_password(mat_khau_cu, row["password"]):
-        return "Mật khẩu hiện tại không đúng"
+        return t("Mật khẩu hiện tại không đúng")
     loi = kiem_tra_mat_khau(mat_khau_moi)
     if loi:
         return loi
@@ -807,16 +808,16 @@ def phan_quyyen(vai_tro, chuc_nang):
 def quyen_chuc_nang() -> dict:
     """Bảng quyền hiển thị cho UI (checkbox)."""
     return {
-        "xem": "Xem dữ liệu (tồn kho, khách hàng)",
-        "nhap": "Nhập kho",
-        "xuat": "Bán hàng / xuất hàng",
-        "kygui": "Ký gửi hàng",
-        "xuat_kygui": "Xuất ký gửi (bán hàng ký gửi)",
-        "hoadon_truoc": "Xuất hóa đơn trước",
-        "baocao": "Xem & xuất báo cáo",
-        "lichsu": "Tra cứu lịch sử khách hàng",
-        "khachhang": "Quản lý danh mục khách hàng",
-        "hopdong": "Quản lý hợp đồng thầu",
+        "xem": t("Xem dữ liệu (tồn kho, khách hàng)"),
+        "nhap": t("Nhập kho"),
+        "xuat": t("Bán hàng / xuất hàng"),
+        "kygui": t("Ký gửi hàng"),
+        "xuat_kygui": t("Xuất ký gửi (bán hàng ký gửi)"),
+        "hoadon_truoc": t("Xuất hóa đơn trước"),
+        "baocao": t("Xem & xuất báo cáo"),
+        "lichsu": t("Tra cứu lịch sử khách hàng"),
+        "khachhang": t("Quản lý danh mục khách hàng"),
+        "hopdong": t("Quản lý hợp đồng thầu"),
     }
 
 
@@ -833,15 +834,15 @@ def create_user(con, username, password, ten_hien_thi, vai_tro="nhanvien",
       admin hệ thống luôn phải đổi mật khẩu chung ở lần đăng nhập đầu."""
     username = (username or "").strip()
     if not username:
-        raise ValueError("Thiếu tên đăng nhập")
+        raise ValueError(t("Thiếu tên đăng nhập"))
     if len(username) < 3:
-        raise ValueError("Tên đăng nhập phải có ít nhất 3 ký tự")
+        raise ValueError(t("Tên đăng nhập phải có ít nhất 3 ký tự"))
     if not re.match(r"^[A-Za-z0-9_.@-]+$", username):
-        raise ValueError("Tên đăng nhập chỉ dùng chữ, số và . _ - @")
+        raise ValueError(t("Tên đăng nhập chỉ dùng chữ, số và . _ - @"))
     if not ten_hien_thi or not str(ten_hien_thi).strip():
-        raise ValueError("Thiếu tên hiển thị")
+        raise ValueError(t("Thiếu tên hiển thị"))
     if vai_tro not in VAI_TRO:
-        raise ValueError(f"Vai trò không hợp lệ: {vai_tro}")
+        raise ValueError(tf("Vai trò không hợp lệ: {}", vai_tro))
     if not password:
         # Mật khẩu chung, bắt buộc đổi ở lần đăng nhập kế.
         password = MAT_KHAU_MAC_DINH
@@ -858,7 +859,7 @@ def create_user(con, username, password, ten_hien_thi, vai_tro="nhanvien",
              if doi_mk_lan_dau else None))
         con.commit()
     except sqlite3.IntegrityError:
-        raise ValueError(f"Tên đăng nhập '{username}' đã tồn tại")
+        raise ValueError(tf("Tên đăng nhập '{}' đã tồn tại", username))
     ghi_log(con, username, "TAO_USER", "users", f"{username} | {vai_tro}")
     return cur.lastrowid
 
@@ -868,11 +869,11 @@ def sua_user(con, user_id, ten_hien_thi=None, vai_tro=None, email=None,
     """Cập nhật thông tin tài khoản (không đổi mật khẩu ở đây)."""
     row = con.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
     if not row:
-        raise ValueError("Không tìm thấy tài khoản")
+        raise ValueError(t("Không tìm thấy tài khoản"))
     if vai_tro is not None and vai_tro not in VAI_TRO:
-        raise ValueError(f"Vai trò không hợp lệ: {vai_tro}")
+        raise ValueError(tf("Vai trò không hợp lệ: {}", vai_tro))
     if vai_tro is not None and row["username"] == "admin" and vai_tro != "admin":
-        raise ValueError("Không thể hạ quyền tài khoản admin hệ thống")
+        raise ValueError(t("Không thể hạ quyền tài khoản admin hệ thống"))
     con.execute(
         "UPDATE users SET ten_hien_thi=COALESCE(?,ten_hien_thi),"
         " vai_tro=COALESCE(?,vai_tro), email=COALESCE(?,email),"
@@ -886,9 +887,9 @@ def xoa_user(con, user_id, nguoi_thao_tac=""):
     """Xoá tài khoản. Không cho xoá admin hệ thống (username='admin')."""
     row = con.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
     if not row:
-        raise ValueError("Không tìm thấy tài khoản")
+        raise ValueError(t("Không tìm thấy tài khoản"))
     if row["username"] == "admin":
-        raise ValueError("Không thể xoá tài khoản admin hệ thống")
+        raise ValueError(t("Không thể xoá tài khoản admin hệ thống"))
     if row["hoat_dong"] != 0:
         con.execute("UPDATE users SET hoat_dong=0 WHERE id=?", (user_id,))
         con.commit()
@@ -903,7 +904,7 @@ def dat_lai_mat_khau(con, user_id, mat_khau_moi, nguoi_thao_tac="", doi_lai_phan
     đồng thời đá toàn bộ phiên đang mở."""
     row = con.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
     if not row:
-        raise ValueError("Không tìm thấy tài khoản")
+        raise ValueError(t("Không tìm thấy tài khoản"))
     loi = kiem_tra_mat_khau(mat_khau_moi)
     if loi:
         raise ValueError(loi)
@@ -1145,7 +1146,7 @@ def backup_db(con=None, backup_dir=None):
     if src is None or not src or src == ":memory:":
         raise ValueError("Không xác định được đường dẫn DB")
     if not os.path.exists(src):
-        return None, f"Không tìm thấy DB: {src}"
+        return None, tf("Không tìm thấy DB: {}", src)
     if backup_dir is None:
         backup_dir = os.path.join(os.path.dirname(src), "backups")
     os.makedirs(backup_dir, exist_ok=True)
@@ -1170,7 +1171,7 @@ def khoi_phuc_db(con, nguon_path):
     - Tự động backup DB hiện tại trước khi ghi đè (an toàn)
     - Trả về (path_backup_cu, loi). loi=None nếu thành công."""
     if not nguon_path or not os.path.exists(nguon_path):
-        return None, "File khôi phục không tồn tại"
+        return None, t("File khôi phục không tồn tại")
     # Validate file nguồn
     try:
         test = sqlite3.connect(nguon_path)
@@ -1179,9 +1180,9 @@ def khoi_phuc_db(con, nguon_path):
         ).fetchone()[0] > 0
         test.close()
     except Exception as e:
-        return None, f"File không phải SQLite hợp lệ: {e}"
+        return None, tf("File không phải SQLite hợp lệ: {}", e)
     if not ok:
-        return None, "File không phải DB QLVT (thiếu bảng dm_vattu)"
+        return None, t("File không phải DB QLVT (thiếu bảng dm_vattu)")
 
     # Backup DB hiện tại trước khi khôi phục (nếu có dữ liệu)
     src = con.execute("PRAGMA database_list").fetchone()[2]
@@ -1215,7 +1216,7 @@ def luu_khachhang(con, ma_kh=None, ten_kh="", dia_chi="", ma_so_thue="", khu_vuc
     Sinh mã KH an toàn: dùng MAX(CAST(substr)).
     """
     if not ten_kh or not str(ten_kh).strip():
-        raise ValueError("Thiếu tên khách hàng")
+        raise ValueError(t("Thiếu tên khách hàng"))
     ten_kh = str(ten_kh).strip()
     if ma_kh:
         # Cập nhật
@@ -1243,7 +1244,7 @@ def xoa_khachhang(con, ma_kh):
     n = con.execute("SELECT COUNT(*) FROM phieu_giaodich WHERE ma_kh=?", (ma_kh,)).fetchone()[0]
     n += con.execute("SELECT COUNT(*) FROM hop_dong WHERE ma_kh=?", (ma_kh,)).fetchone()[0]
     if n > 0:
-        raise ValueError(f"Không thể xóa KH {ma_kh}: đã có {n} phiếu/hợp đồng liên quan")
+        raise ValueError(tf("Không thể xóa KH {}: đã có {} phiếu/hợp đồng liên quan", ma_kh, n))
     con.execute("DELETE FROM dm_khachhang WHERE ma_kh=?", (ma_kh,))
     ghi_log(con, "", "XOA_KH", "dm_khachhang", ma_kh)
 
@@ -1317,12 +1318,12 @@ def xuat_pdf(con, duong_dan_pdf):
         from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     except ImportError:
-        return None, "Thiếu thư viện reportlab. Cài: pip install reportlab"
+        return None, t("Thiếu thư viện reportlab. Cài: pip install reportlab")
 
     # Lấy dữ liệu biên bản
     bb = bien_ban(con)
     if not bb:
-        return None, "Không tìm thấy phiếu xuất nào"
+        return None, t("Không tìm thấy phiếu xuất nào")
 
     # Tạo thư mục dist/bienban/
     dist_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist", "bienban")
@@ -1415,7 +1416,7 @@ def xuat_baocao_pdf(con, loai, nam, duong_dan_pdf):
         from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     except ImportError:
-        return None, "Thiếu thư viện reportlab. Cài: pip install reportlab"
+        return None, t("Thiếu thư viện reportlab. Cài: pip install reportlab")
 
     # Tạo thư mục dist/baocao/
     dist_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist", "baocao")
