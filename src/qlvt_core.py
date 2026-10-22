@@ -17,13 +17,49 @@ Chứa:
 import sqlite3
 import os
 import re
+import sys
 import time
 import random
 from datetime import datetime, date
 
-SCHEMA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schema.sql")
+
+def _resource_dir():
+    """Thư mục chứa tài nguyên (schema.sql).
+
+    Khi đóng gói bằng PyInstaller, schema.sql nằm trong sys._MEIPASS;
+    khi chạy từ source thì nằm cạnh file này.
+    """
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return sys._MEIPASS
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def _db_dir():
+    """Thư mục lưu CSDL — phải BỀN VỮNG.
+
+    Trong bản .exe, thư mục này KHÔNG được nằm trong _MEIPASS (bị xoá khi
+    thoát app → mất toàn bộ dữ liệu). Ưu tiên cạnh file .exe; nếu không ghi
+    được (Program Files) thì rơi về %LOCALAPPDATA%/QLVT-YTe.
+    """
+    if getattr(sys, "frozen", False):
+        base = os.path.dirname(os.path.abspath(sys.executable))
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+    try:
+        probe = os.path.join(base, ".qlvt_write_test")
+        with open(probe, "w") as f:
+            f.write("")
+        os.remove(probe)
+        return base
+    except OSError:
+        fallback = os.path.join(os.environ.get("LOCALAPPDATA", base), "QLVT-YTe")
+        os.makedirs(fallback, exist_ok=True)
+        return fallback
+
+
+SCHEMA_FILE = os.path.join(_resource_dir(), "schema.sql")
 # DB path override — test / nhiều instance khác nhau không dùng chung 1 file
-DB_PATH = os.environ.get("QLVT_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "qlvt.db"))
+DB_PATH = os.environ.get("QLVT_DB", os.path.join(_db_dir(), "qlvt.db"))
 
 # ============================================================
 # 1. KẾT NỐI

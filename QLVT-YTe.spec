@@ -21,7 +21,6 @@ a = Analysis(
     binaries=[],
     datas=[
         (SRC + '/schema.sql', '.'),   # app đọc schema khi tạo DB mới
-        (SRC + '/static', 'static'),  # thư mục static
     ],
     hiddenimports=[
         'customtkinter',
