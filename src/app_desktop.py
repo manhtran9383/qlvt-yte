@@ -19,13 +19,19 @@ from i18n import t, tf, set_lang, get_lang
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("green")
-
-# Khi đóng gói PyInstaller (onefile), __file__ trỏ tới thư mục tạm _MEIPASS.
-# DB phải nằm cạnh file exe (thư mục thực thi) để dữ liệu bền vững giữa các lần chạy.
+# Áp dụng theme trung tính (achromatic-ledger) thay cho mặc định green.
+# PyInstaller onefile: exe + datas (neutral_theme.json, schema.sql) extract together to a temp dir (sys._MEIPASS).
+# PyInstaller onedir: exe + datas live in the same dir as the .exe.
 if getattr(sys, "frozen", False):
-    _APP_DIR = os.path.dirname(os.path.abspath(sys.executable))
+    if getattr(sys, "_MEIPASS", None):
+        _APP_DIR = sys._MEIPASS
+    else:
+        _APP_DIR = os.path.dirname(os.path.abspath(sys.executable))
 else:
     _APP_DIR = os.path.dirname(os.path.abspath(__file__))
+_THEME_PATH = os.path.join(_APP_DIR, "neutral_theme.json")
+ctk.ThemeManager.load_theme(_THEME_PATH)
+# DB must be alongside the exe (in the temp dir for onefile, in dist/ for onedir)
 DB_PATH = os.path.join(_APP_DIR, "qlvt.db")
 
 # Tên hiển thị của vai trò (dùng cho cả UI lẫn báo cáo)
