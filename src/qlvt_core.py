@@ -318,6 +318,18 @@ def canh_bao_v2(con, tk_data):
 # ============================================================
 
 def doanh_so_thang(con, nam=None):
+    """Trả về doanh số bán hàng按月 cho năm.
+
+    Args:
+        con: Kết nối SQLite.
+        nam: Năm cần hỏi (mặc định là năm hiện tại).
+
+    Returns:
+        List of (thang, so_luong, doanh_so) tuples, trong đó:
+        - thang: Số tháng (1-12).
+        - so_luong: Số lượng bán ra.
+        - doanh_so: Tổng tiền bán (VND).
+    """
     nam = nam or date.today().year
     return con.execute(
         """SELECT substr(ngay_phieu,6,2) AS thang,
@@ -407,6 +419,15 @@ def thi_phan(con, nam=None):
 
 
 def tien_do_hop_dong(con):
+    """Trả về tiến độ hợp đồng.
+
+    Args:
+        con: Kết nối SQLite.
+
+    Returns:
+        List of dict/vtuples từ view v_tiendo_hopdong,
+        thường trả về 1 dòng với tiến độ hợp đồng theo phần trăm.
+    """
     return con.execute("SELECT * FROM v_tiendo_hopdong").fetchall()
 
 # ============================================================
@@ -537,6 +558,15 @@ def ds_vattu(con, q=""):
 
 
 def ds_khachhang(con):
+    """Trả về danh sách khách hàng.
+
+    Args:
+        con: Kết nối SQLite.
+
+    Returns:
+        List of (ma_kh, ten_kh, dia_chi, ma_so_thue, khu_vuc) tuples
+        sắp theo tên khách hàng.
+    """
     return con.execute(
         "SELECT ma_kh, ten_kh, dia_chi, ma_so_thue, khu_vuc FROM dm_khachhang ORDER BY ten_kh"
     ).fetchall()
@@ -1249,6 +1279,18 @@ def xoa_khachhang(con, ma_kh):
     ghi_log(con, "", "XOA_KH", "dm_khachhang", ma_kh)
 
 def ds_phieu(con, loai=None, limit=200):
+    """Trả về lịch sử phiếu với tùy chọn lọc.
+
+    Args:
+        con: Kết nối SQLite.
+        loai: Loại phiếu để lọc (ví dụ: 'XUAT', 'NHAP'). Mặc định là None (tất cả).
+        limit: Số lượng bản ghi tối đa (mặc định 200).
+
+    Returns:
+        List of dicts/tuples chứa:
+        so_phieu, loai_phieu, ngay_phieu, ma_vt, ten_vt, dvt,
+        so_luong, don_gia, thanh_tien, ten_kh, khoa_nhan, nguoi_lap.
+    """
     sql = """SELECT p.so_phieu, p.loai_phieu, p.ngay_phieu, p.ma_vt, v.ten_vt, v.dvt,
                     p.so_luong, p.don_gia, p.thanh_tien,
                     k.ten_kh, p.khoa_nhan, p.nguoi_lap
