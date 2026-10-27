@@ -1160,7 +1160,7 @@ class App(ctk.CTk):
             return
         v = rows[0]
         try:
-            sl = float(self.v_sl.get())
+            sl = to_float(self.v_sl.get())
         except ValueError:
             sl = 1
         if sl <= 0:

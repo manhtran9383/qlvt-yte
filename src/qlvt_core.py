@@ -647,6 +647,7 @@ def tien_do_hoadon_truoc(con):
 
 def lich_su_khachhang(con, ma_kh=None, tu_ngay=None, den_ngay=None):
     """Lịch sử giao dịch của 1 hoặc tất cả khách hàng, lọc theo thời gian."""
+    # Sử dụng cột loai_phieu thay vì loai (để tránh IndexError)
     sql = "SELECT * FROM v_lich_su_khachhang WHERE 1=1"
     args = ()
     if ma_kh:
@@ -1343,7 +1344,7 @@ def luu_hop_dong(con, so_hd, ma_kh, ma_vt, so_luong, don_gia, ngay_ky=None,
 # 16. XUẤT PDF
 # ============================================================
 
-def xuat_pdf(con, duong_dan_pdf):
+def xuat_pdf(con, duong_dan_pdf, lang=None):
     """Xuất biên bản giao hàng ra file PDF.
     Dùng reportlab. Trả về đường dẫn file PDF đã tạo.
     PDF format: A4, font Helvetica, bảng biên bản giao hàng với:
@@ -1393,12 +1394,24 @@ def xuat_pdf(con, duong_dan_pdf):
     # Thông tin
     info_style = ParagraphStyle('Info', parent=styles['Normal'], fontSize=10, spaceAfter=2)
     elements.append(Paragraph(f"<b>Số phiếu:</b> {bb['so_phieu']}", info_style))
-    elements.append(Paragraph(f"<b>Ngày:</b> {bb['ngay']}/{bb['thang']}/{bb['nam']}", info_style))
-    elements.append(Paragraph(f"<b>Số hợp đồng:</b> {bb['so_hop_dong']}", info_style))
-    elements.append(Paragraph(f"<b>Khách hàng:</b> {bb['ten_kh']}", info_style))
-    elements.append(Paragraph(f"<b>Địa chỉ:</b> {bb['dia_chi']}", info_style))
-    elements.append(Paragraph(f"<b>MST:</b> {bb['ma_so_thue']}", info_style))
-    elements.append(Paragraph(f"<b>Khoa nhận:</b> {bb['khoa_nhan']}", info_style))
+    # Sử dụng lang để hiển thị thông tin phù hợp với ngôn ngữ
+    if lang:
+        ng_label = t("Ngày") if lang == "vi" else "Date"
+        kh_label = t("Khách hàng") if lang == "vi" else "Customer"
+        dc_label = t("Địa chỉ") if lang == "vi" else "Address"
+        mst_label = t("MST") if lang == "vi" else "MST"
+        kn_label = t("Khoa nhận") if lang == "vi" else "Receiving dept"
+    else:
+        ng_label = "Ngày"
+        kh_label = "Khách hàng"
+        dc_label = "Địa chỉ"
+        mst_label = "MST"
+        kn_label = "Khoa nhận"
+    elements.append(Paragraph(f"<b>{ng_label}:</b> {bb['ngay']}/{bb['thang']}/{bb['nam']}", info_style))
+    elements.append(Paragraph(f"<b>{kh_label}:</b> {bb['ten_kh']}", info_style))
+    elements.append(Paragraph(f"<b>{dc_label}:</b> {bb['dia_chi']}", info_style))
+    elements.append(Paragraph(f"<b>{mst_label}:</b> {bb['ma_so_thue']}", info_style))
+    elements.append(Paragraph(f"<b>{kn_label}:</b> {bb['khoa_nhan']}", info_style))
     elements.append(Spacer(1, 5*mm))
 
     # Bảng
@@ -1446,7 +1459,7 @@ def xuat_pdf(con, duong_dan_pdf):
     return duong_dan_pdf, None
 
 
-def xuat_baocao_pdf(con, loai, nam, duong_dan_pdf):
+def xuat_baocao_pdf(con, loai, nam, duong_dan_pdf, lang=None):
     """Xuất báo cáo ra PDF.
     loai: 'm' (tháng), 'q' (quý), 's' (thị phần)
     Dùng reportlab tạo PDF với bảng báo cáo tương ứng.

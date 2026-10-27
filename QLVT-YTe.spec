@@ -21,6 +21,7 @@ a = Analysis(
     binaries=[],
     datas=[
         (SRC + '/schema.sql', '.'),   # app đọc schema khi tạo DB mới
+        (SRC + '/neutral_theme.json', '.'),  # theme trung tính - preventing exe crash on startup
     ],
     hiddenimports=[
         'customtkinter',
