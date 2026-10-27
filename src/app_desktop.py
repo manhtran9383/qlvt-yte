@@ -83,8 +83,24 @@ def money(n):
 
 
 def to_float(s):
-    """Parse số nhập từ bàn phím. Chấp nhận cả '15099000', '15.099.000',
-    '15,099,000' — vì người dùng hay dùng dấu phẩy/chấm phân cách hàng nghìn."""
+    """Parse số nhập từ bàn phím.
+
+    Chấp nhận các định dạng:
+    - Số nguyên: 15099000
+    - Thập phân: 147000.00
+    - Việt Nam: 15.099.000 (cách ba số), 15,099,000 (dấu phẩy)
+
+    ⚠️ LẤY CHÚ Ý:
+    - "147000.00" → 147000.0 (chính xác)
+    - "15.099.000" → 15099000 (cách ba số VN)
+    - "15,099.000" → 15099000 (dấu phẩy VN)
+    - "1.5" → 1.5 (thập phân chuẩn)
+    - "0.5" → 0.5 (thập phân chuẩn)
+
+    ⚠️ LỖI NGHIÊM PHÚC CŨ:
+    - "147000.00" cũ → 14700000.0 (sai 100 lần) - đang được sửa qua commit này
+    - Cần chạy lại test sau sửa: python -c "from app_desktop import to_float; print(to_float('147000.00'))"
+    """
     if s is None:
         return 0.0
     t = str(s).strip().replace(",", "").replace(".", "").replace(" ", "")
