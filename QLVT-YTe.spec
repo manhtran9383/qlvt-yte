@@ -1,14 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-spec file cho PyInstaller — đóng gói app_desktop.py thành 1 file .exe
+spec file cho PyInstaller — đóng gói src/app_desktop.py thành 1 file .exe
 
 Build (từ thư mục gốc dự án):
     python -m PyInstaller QLVT-YTe.spec --clean
 Output:
     dist/QLVT-YTe.exe
 
-QUAN TRỌNG: spec này trỏ vào ../src (thư mục nguồn thật), KHÔNG dùng
-bản copy trong build_desktop/ nữa — tránh build nhầm code cũ.
+SỬA (V3):
+  - datas BẮT BUỘC có neutral_theme.json: app_desktop nạp theme ở cấp module;
+    bản cũ thiếu file này -> exe onefile FileNotFoundError ngay khi khởi động
+    (chết im lặng vì console=False). GUI nay có fallback nên không crash nữa,
+    nhưng thiếu datas thì mất theme trung tính.
+  - upx=False: UPX nén binary hay bị antivirus nhận diện nhầm (false
+    positive) — tối kỵ khi phân phối vào bệnh viện. Đổi cũ: upx=True.
+  - hiddenimports thêm 'i18n' (module cục bộ) và 'babel' (tkcalendar cần).
+  - DB KHÔNG nằm trong datas: core._db_dir() đặt qlvt.db cạnh .exe khi chạy
+    (fallback %LOCALAPPDATA% nếu không ghi được). Tuyệt đối không trỏ DB vào
+    sys._MEIPASS — thư mục tạm bị xoá khi thoát -> mất dữ liệu.
 """
 
 block_cipher = None
@@ -20,8 +29,8 @@ a = Analysis(
     pathex=[SRC],
     binaries=[],
     datas=[
-        (SRC + '/schema.sql', '.'),   # app đọc schema khi tạo DB mới
-        (SRC + '/neutral_theme.json', '.'),  # theme trung tính - preventing exe crash on startup
+        (SRC + '/schema.sql', '.'),           # app đọc schema khi tạo DB mới
+        (SRC + '/neutral_theme.json', '.'),   # theme trung tính (V3: bắt buộc)
     ],
     hiddenimports=[
         'customtkinter',
@@ -29,7 +38,9 @@ a = Analysis(
         'reportlab',
         'bcrypt',
         'qlvt_core',
+        'i18n',
         'tkcalendar',
+        'babel',
     ],
     hookspath=[],
     hooksconfig={},
@@ -54,7 +65,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,             # V3: tránh antivirus false-positive
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,

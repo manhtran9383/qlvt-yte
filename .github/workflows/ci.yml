@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: System deps (Linux: Tk + font tiếng Việt + Xvfb)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk xvfb fonts-dejavu-core
+
+      - name: Install Python deps
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Lint (ruff — product files)
+        run: >
+          ruff check src/app_desktop.py src/qlvt_core.py
+          src/test_v3_fixes.py src/test_core_v3_fixes.py
+          --select F,E7,E9,B,W6
+
+      - name: Core tests (45 checks)
+        run: python src/test_core.py
+
+      - name: Core regression tests (pytest)
+        run: python -m pytest src/test_core_v3_fixes.py -q
+
+      - name: GUI tests — Linux (Xvfb)
+        if: runner.os == 'Linux'
+        run: |
+          xvfb-run -a python src/test_desktop.py
+          xvfb-run -a python -m pytest src/test_v3_fixes.py -q
+
+      - name: GUI tests — Windows
+        if: runner.os == 'Windows'
+        run: |
+          python src/test_desktop.py
+          python -m pytest src/test_v3_fixes.py -q
+
+      - name: Build .exe (PyInstaller)
+        run: python -m PyInstaller QLVT-YTe.spec --clean --noconfirm
+
+      # SMOKE-TEST BẢN ĐÓNG GÓI — bước mà repo chưa từng có.
+      # Chạy app đã build ~25s rồi kiểm tra:
+      #   1. process sống (không crash lúc khởi động)
+      #   2. app.log có "MAIN START" và KHÔNG có "FATAL ERROR"
+      #   3. qlvt.db được tạo CẠNH executable (không phải thư mục tạm)
+      #   4. chạy lần 2 -> DB bền vững (dữ liệu không mất theo _MEIPASS)
+      - name: Smoke-run packaged app (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          chmod +x dist/QLVT-YTe
+          xvfb-run -a timeout 25 ./dist/QLVT-YTe || true
+          test -f dist/app.log || { echo "THIEU app.log — exe chet truoc khi khoi dong"; exit 1; }
+          grep -q "MAIN START" dist/app.log || { echo "exe khong khoi dong duoc"; cat dist/app.log; exit 1; }
+          if grep -q "FATAL ERROR" dist/app.log; then echo "FATAL trong exe"; cat dist/app.log; exit 1; fi
+          test -f dist/qlvt.db || { echo "DB khong nam canh exe"; exit 1; }
+          xvfb-run -a timeout 15 ./dist/QLVT-YTe || true
+          test -f dist/qlvt.db && echo "SMOKE OK: exe khoi dong, DB ben vung qua 2 lan chay"
+
+      - name: Smoke-run packaged app (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $p = Start-Process -FilePath "dist\QLVT-YTe.exe" -PassThru
+          Start-Sleep -Seconds 25
+          $alive = -not $p.HasExited
+          if (-not $alive) { Write-Error "exe chet som (exit code $($p.ExitCode))" }
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          if (-not (Test-Path "dist\app.log")) { Write-Error "thieu app.log" }
+          $log = Get-Content "dist\app.log" -Raw
+          if ($log -notmatch "MAIN START") { Write-Error "exe khong khoi dong duoc: $log" }
+          if ($log -match "FATAL ERROR") { Write-Error "FATAL trong exe: $log" }
+          if (-not (Test-Path "dist\qlvt.db")) { Write-Error "DB khong nam canh exe" }
+          $p2 = Start-Process -FilePath "dist\QLVT-YTe.exe" -PassThru
+          Start-Sleep -Seconds 12
+          Stop-Process -Id $p2.Id -Force -ErrorAction SilentlyContinue
+          if (Test-Path "dist\qlvt.db") { Write-Host "SMOKE OK: exe chay, DB ben vung qua 2 lan" }

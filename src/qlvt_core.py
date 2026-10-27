@@ -21,7 +21,7 @@ import sys
 import time
 import random
 from datetime import datetime, date
-from i18n import t, tf
+from i18n import t, tf, set_lang, get_lang
 
 
 def _resource_dir():
@@ -129,8 +129,12 @@ def next_so_phieu(con, loai="PX", prefix=None):
     Gọi từ trong transaction của ghi_phieu để tránh race condition.
     """
     d = date.today()
+    # XUAT_HOADON_TRUOC từng rơi về prefix "PX" -> đánh số lẫn với phiếu xuất
+    # thường. Tách riêng "XH"; phiếu PX- cũ của loại này vẫn hợp lệ (MAX+1
+    # tính theo prefix mới, không đụng dãy cũ).
     p = prefix or {"NHAP": "PN", "XUAT": "PX", "KYGUI": "KG",
-                   "XUAT_KYGUI": "XK"}.get(loai, "PX")
+                   "XUAT_KYGUI": "XK",
+                   "XUAT_HOADON_TRUOC": "XH"}.get(loai, "PX")
     prefix_str = f"{p}-{d.year}-"
     # Trích xuất phần số sau prefix (4+ chữ số) → cast integer → MAX + 1
     row = con.execute(
@@ -145,37 +149,77 @@ def next_so_phieu(con, loai="PX", prefix=None):
 # 3. GHI SỔ GIAO DỊCH — nguồn duy nhất của mọi con số
 # ============================================================
 
+def fmt_sl(n):
+    """Format số lượng cho thông báo lỗi: bỏ .0 thừa, có nhóm nghìn."""
+    try:
+        n = float(n or 0)
+    except (TypeError, ValueError):
+        return str(n)
+    return f"{n:,.0f}" if n == int(n) else f"{n:,.2f}"
+
+
 def ghi_phieu(con, loai_phieu, ngay_phieu, ma_vt, so_luong, don_gia,
               ma_kh=None, so_lo=None, han_su_dung=None, khoa_nhan=None,
               nguoi_goi=None, so_hop_dong=None, so_hoa_don=None,
-              nguoi_lap="", ghi_chu=""):
+              nguoi_lap="", ghi_chu="", cho_am_kho=False):
     """Ghi 1 dòng phiếu. Trả về số phiếu đã ghi.
 
     loai_phieu: NHAP | XUAT | KYGUI | XUAT_KYGUI | XUAT_HOADON_TRUOC
-    so_luong: dương cho NHAP/KYGUI, dương cho XUAT (view tự trừ dấu)
+    so_luong: BẮT BUỘC > 0 với mọi loại phiếu (chiều âm/dương do loại phiếu
+        quyết định trong view — số âm từng làm XUAT tăng ngược tồn kho).
+    cho_am_kho: mặc định False -> XUAT vượt tồn kho công ty bị CHẶN
+        (ValueError). True chỉ khi người dùng đã xác nhận tường minh trên UI —
+        quyết định nghiệp vụ phải để lại dấu vết, không nằm ở mặc định.
+
+    Raises: ValueError cho mọi vi phạm nghiệp vụ (để GUI/CLI hiển thị).
     """
-    if so_luong is None or float(so_luong) == 0:
+    if so_luong is None:
         raise ValueError(t("Số lượng phải khác 0"))
+    try:
+        sl = float(so_luong)
+    except (TypeError, ValueError):
+        raise ValueError(
+            tf("Số lượng '{}' không phải là số", so_luong)) from None
+    if sl <= 0:
+        raise ValueError(
+            tf("Số lượng phải là số dương (nhận: {})", so_luong))
     if not ma_vt:
         raise ValueError(t("Thiếu mã vật tư"))
     if not con.execute("SELECT 1 FROM dm_vattu WHERE ma_vt=?", (ma_vt,)).fetchone():
         raise ValueError(tf("Mã vật tư '{}' không tồn tại trong danh mục", ma_vt))
 
-    # Khi GIAO HÀNG (XUAT) kèm số hóa đơn: không được giao nhiều hơn đã xuất hóa đơn.
-    # Check ở đây (không chỉ ở xuat_hoadon_truoc) vì người dùng có thể giao trước mà xuất HĐ sau.
+    # Chặn XUẤT VƯỢT TỒN KHO CÔNG TY (mặc định). Bản cũ cho âm kho tự do —
+    # thậm chí XUAT số lượng âm làm tồn kho TĂNG. Chỉ bỏ qua khi caller
+    # truyền cho_am_kho=True (người dùng đã được hỏi và xác nhận).
+    if loai_phieu == "XUAT" and not cho_am_kho:
+        ton = con.execute(
+            "SELECT COALESCE(SUM(CASE WHEN loai_phieu='NHAP' THEN so_luong "
+            "       ELSE -so_luong END),0) FROM phieu_giaodich "
+            "WHERE ma_vt=? AND loai_phieu IN ('NHAP','XUAT')",
+            (ma_vt,)).fetchone()[0] or 0
+        if sl > ton:
+            raise ValueError(
+                tf("Tồn kho {} chỉ còn {} — không thể xuất {} "
+                   "(cần cho phép âm kho thì truyền cho_am_kho=True "
+                   "sau khi người dùng xác nhận)", ma_vt, fmt_sl(ton), fmt_sl(sl)))
+
+    # Khi GIAO HÀNG (XUAT) kèm số hóa đơn: không được giao nhiều hơn đã xuất
+    # hóa đơn — THEO ĐÚNG (so_hoa_don, ma_vt). Bản cũ cộng gộp xuyên mặt hàng
+    # nên giao B trên hóa đơn của A vẫn lọt.
     if loai_phieu == "XUAT" and so_hoa_don:
         da_xuat_hd = con.execute(
             "SELECT COALESCE(SUM(so_luong),0) FROM phieu_giaodich "
-            "WHERE loai_phieu='XUAT_HOADON_TRUOC' AND so_hoa_don=?",
-            (so_hoa_don,)).fetchone()[0] or 0
+            "WHERE loai_phieu='XUAT_HOADON_TRUOC' AND so_hoa_don=? AND ma_vt=?",
+            (so_hoa_don, ma_vt)).fetchone()[0] or 0
         da_giao = con.execute(
             "SELECT COALESCE(SUM(so_luong),0) FROM phieu_giaodich "
-            "WHERE loai_phieu='XUAT' AND so_hoa_don=?",
-            (so_hoa_don,)).fetchone()[0] or 0
-        if da_giao + float(so_luong) > da_xuat_hd:
+            "WHERE loai_phieu='XUAT' AND so_hoa_don=? AND ma_vt=?",
+            (so_hoa_don, ma_vt)).fetchone()[0] or 0
+        if da_giao + sl > da_xuat_hd:
             raise ValueError(
-                tf("Giao {} sẽ vượt số đã xuất hóa đơn {}", so_luong, so_hoa_don) + 
-                f"(đã xuất HĐ {da_xuat_hd}, đã giao {da_giao})")
+                tf("Giao {} sẽ vượt số đã xuất hóa đơn {} của mặt hàng {}",
+                   fmt_sl(sl), so_hoa_don, ma_vt)
+                + f" (đã xuất HĐ {fmt_sl(da_xuat_hd)}, đã giao {fmt_sl(da_giao)})")
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     sql = """INSERT INTO phieu_giaodich
@@ -266,16 +310,22 @@ def gia_ban(con, ma_vt, ma_kh):
 # ============================================================
 
 def ton_kho(con):
-    """Toàn bộ tồn kho công ty (view)."""
+    """Toàn bộ tồn kho công ty.
+
+    gia_tri_ton = tồn x GIÁ DANH MỤC (dm_vattu.don_gia) — nhất quán 1-1 với
+    view v_tonkho. Bản cũ nhân với MAX(don_gia) của TOÀN BỘ giao dịch (gồm cả
+    giá bán) -> KPI "Giá trị tồn kho" bị thổi phồng theo giá cao nhất từng
+    ghi nhận, và lệch với view.
+    """
     return con.execute(
         """SELECT v.ma_vt, v.ten_vt, v.dvt, v.ton_toi_thieu, v.don_gia,
-                  COALESCE(t.ton_kho,0)      AS ton_kho,
-                  COALESCE(t.gia_tri_ton,0)  AS gia_tri_ton
+                  COALESCE(t.ton_kho,0)                    AS ton_kho,
+                  COALESCE(t.ton_kho,0) * v.don_gia        AS gia_tri_ton
            FROM dm_vattu v
            LEFT JOIN (
                SELECT ma_vt,
-                      SUM(CASE WHEN loai_phieu='NHAP' THEN so_luong ELSE -so_luong END) AS ton_kho,
-                      SUM(CASE WHEN loai_phieu='NHAP' THEN so_luong ELSE -so_luong END) * MAX(don_gia) AS gia_tri_ton
+                      SUM(CASE WHEN loai_phieu='NHAP' THEN so_luong
+                               ELSE -so_luong END) AS ton_kho
                FROM phieu_giaodich WHERE loai_phieu IN ('NHAP','XUAT')
                GROUP BY ma_vt
            ) t ON t.ma_vt = v.ma_vt
@@ -318,7 +368,7 @@ def canh_bao_v2(con, tk_data):
 # ============================================================
 
 def doanh_so_thang(con, nam=None):
-    """Trả về doanh số bán hàng按月 cho năm.
+    """Trả về doanh số bán hàng THEO THÁNG cho năm.
 
     Args:
         con: Kết nối SQLite.
@@ -419,14 +469,12 @@ def thi_phan(con, nam=None):
 
 
 def tien_do_hop_dong(con):
-    """Trả về tiến độ hợp đồng.
-
-    Args:
-        con: Kết nối SQLite.
+    """Tiến độ thực hiện mọi hợp đồng (view v_tiendo_hopdong).
 
     Returns:
-        List of dict/vtuples từ view v_tiendo_hopdong,
-        thường trả về 1 dòng với tiến độ hợp đồng theo phần trăm.
+        List[sqlite3.Row] — MỖI hợp đồng x mặt hàng một dòng, cột:
+        so_hd, ma_kh, ma_vt, so_luong, don_gia, da_thuc_hien, con_lai
+        (số TUYỆT ĐỐI, không có phần trăm — % do tầng hiển thị tự tính).
     """
     return con.execute("SELECT * FROM v_tiendo_hopdong").fetchall()
 
@@ -480,10 +528,14 @@ def so_tien_bang_chu(so_tien):
 # 8. BIÊN BẢN GIAO HÀNG — dữ liệu cho mẫu in
 # ============================================================
 
-def bien_ban(con, so_phieu_gia_tri=None):
+def bien_ban(con, so_phieu_gia_tri=None, vat_pct=8.0):
     """Lấy thông tin để in biên bản giao hàng cho 1 phiếu xuất.
-    Trả về dict; template in do app_desktop tự render (print dialog / PDF).
-    Lưu ý: KHÔNG hiển thị hạn sử dụng. Gom các dòng cùng ma_vt (cộng dồn so_luong)."""
+
+    Trả về dict; template in do tầng trình bày render (GUI/CLI/PDF).
+    vat_pct: thuế suất % (mặc định 8) — bản cũ hardcode 0.08, trong khi thuế
+    suất VN thay đổi theo mặt hàng/thời kỳ (5/8/10%).
+    Gom các dòng cùng ma_vt (cộng dồn so_luong); không hiển thị hạn dùng.
+    """
     if not so_phieu_gia_tri:
         r = con.execute(
             "SELECT so_phieu FROM phieu_giaodich WHERE loai_phieu='XUAT' ORDER BY ngay_lap DESC LIMIT 1"
@@ -522,7 +574,11 @@ def bien_ban(con, so_phieu_gia_tri=None):
             "ten_vt": g["ten_vt"], "ma_vt": g["ma_vt"], "dvt": g["dvt"],
             "so_luong": g["so_luong"], "don_gia": g["don_gia"], "thanh_tien": tt,
         })
-    vat = tong * 0.08
+    try:
+        vat_pct = float(vat_pct)
+    except (TypeError, ValueError):
+        vat_pct = 8.0
+    vat = tong * vat_pct / 100.0
     d = None
     try:
         d = datetime.strptime(rows[0]["ngay_phieu"], "%Y-%m-%d").date()
@@ -535,7 +591,8 @@ def bien_ban(con, so_phieu_gia_tri=None):
         "ma_so_thue": rows[0]["ma_so_thue"] or "",
         "khoa_nhan": rows[0]["khoa_nhan"] or "", "nguoi_goi": rows[0]["nguoi_goi"] or "",
         "so_hop_dong": rows[0]["so_hop_dong"] or "",
-        "items": items, "tong": tong, "vat": vat, "tong_cong": tong + vat,
+        "items": items, "tong": tong, "vat": vat, "vat_pct": vat_pct,
+        "tong_cong": tong + vat,
         "bang_chu": so_tien_bang_chu(tong + vat),
         "nguoi_lap": rows[0]["nguoi_lap"] or "",
     }
@@ -558,14 +615,12 @@ def ds_vattu(con, q=""):
 
 
 def ds_khachhang(con):
-    """Trả về danh sách khách hàng.
-
-    Args:
-        con: Kết nối SQLite.
+    """Danh sách khách hàng, sắp theo tên.
 
     Returns:
-        List of (ma_kh, ten_kh, dia_chi, ma_so_thue, khu_vuc) tuples
-        sắp theo tên khách hàng.
+        List[sqlite3.Row] với các cột ma_kh, ten_kh, dia_chi, ma_so_thue,
+        khu_vuc (Row truy cập được cả theo tên cột lẫn index — KHÔNG phải
+        tuple thường như docstring cũ tuyên bố sai).
     """
     return con.execute(
         "SELECT ma_kh, ten_kh, dia_chi, ma_so_thue, khu_vuc FROM dm_khachhang ORDER BY ten_kh"
@@ -615,21 +670,23 @@ def xuat_hoadon_truoc(con, ngay, ma_vt, so_luong, ma_kh, so_hoa_don,
     Số lượng đã giao = tổng phiếu XUAT có cùng so_hoa_don."""
     if not so_hoa_don:
         raise ValueError(t("Thiếu số hóa đơn"))
-    # Kiểm tra không vượt quá số đã xuất hóa đơn
+    # Kiểm tra theo ĐÚNG (so_hoa_don, ma_vt): tổng đã giao của mặt này không
+    # được vượt tổng đã xuất hóa đơn (kể cả phiếu đang tạo). Bản cũ cộng gộp
+    # xuyên mặt hàng — hóa đơn của A "gánh" cho B.
     da_xuat_hd = con.execute(
         "SELECT COALESCE(SUM(so_luong),0) FROM phieu_giaodich "
-        "WHERE loai_phieu='XUAT_HOADON_TRUOC' AND so_hoa_don=?",
-        (so_hoa_don,)).fetchone()[0] or 0
+        "WHERE loai_phieu='XUAT_HOADON_TRUOC' AND so_hoa_don=? AND ma_vt=?",
+        (so_hoa_don, ma_vt)).fetchone()[0] or 0
     da_giao = con.execute(
         "SELECT COALESCE(SUM(so_luong),0) FROM phieu_giaodich "
-        "WHERE loai_phieu='XUAT' AND so_hoa_don=?",
-        (so_hoa_don,)).fetchone()[0] or 0
-    # Logic: tổng đã xuất hóa độn (kể cả phiếu đang tạo) phải >= tổng đã giao.
-    # Nếu không, sẽ xuất hóa độn nhiều hơn hàng thực tế giao.
+        "WHERE loai_phieu='XUAT' AND so_hoa_don=? AND ma_vt=?",
+        (so_hoa_don, ma_vt)).fetchone()[0] or 0
     if da_giao > da_xuat_hd + float(so_luong):
-        raise ValueError(tf("Đã giao {} nhưng chỉ xuất hóa độn {}", da_giao, da_xuat_hd) + 
-                         f"(thêm phiếu này = {da_xuat_hd + float(so_luong)}). "
-                         f"Không thể giao nhiều hơn đã xuất hóa độn.")
+        raise ValueError(
+            tf("Mặt {} đã giao {} nhưng hóa đơn {} mới xuất {} "
+               "(thêm phiếu này = {}). Không thể giao nhiều hơn đã xuất "
+               "hóa đơn.", ma_vt, fmt_sl(da_giao), so_hoa_don,
+               fmt_sl(da_xuat_hd), fmt_sl(da_xuat_hd + float(so_luong))))
     gia, _ = gia_ban(con, ma_vt, ma_kh)
     return ghi_phieu(con, "XUAT_HOADON_TRUOC", ngay, ma_vt, so_luong, gia,
                      ma_kh=ma_kh, so_hop_dong=so_hop_dong, so_hoa_don=so_hoa_don,
@@ -647,7 +704,6 @@ def tien_do_hoadon_truoc(con):
 
 def lich_su_khachhang(con, ma_kh=None, tu_ngay=None, den_ngay=None):
     """Lịch sử giao dịch của 1 hoặc tất cả khách hàng, lọc theo thời gian."""
-    # Sử dụng cột loai_phieu thay vì loai (để tránh IndexError)
     sql = "SELECT * FROM v_lich_su_khachhang WHERE 1=1"
     args = ()
     if ma_kh:
@@ -836,6 +892,10 @@ def phan_quyyen(vai_tro, chuc_nang):
     return chuc_nang in QUYEN.get(vai_tro, set())
 
 
+# Alias đúng chính tả — giữ phan_quyyen vì GUI/code cũ đang gọi tên đó.
+phan_quyen = phan_quyyen
+
+
 def quyen_chuc_nang() -> dict:
     """Bảng quyền hiển thị cho UI (checkbox)."""
     return {
@@ -890,7 +950,8 @@ def create_user(con, username, password, ten_hien_thi, vai_tro="nhanvien",
              if doi_mk_lan_dau else None))
         con.commit()
     except sqlite3.IntegrityError:
-        raise ValueError(tf("Tên đăng nhập '{}' đã tồn tại", username))
+        raise ValueError(
+            tf("Tên đăng nhập '{}' đã tồn tại", username)) from None
     ghi_log(con, username, "TAO_USER", "users", f"{username} | {vai_tro}")
     return cur.lastrowid
 
@@ -958,13 +1019,13 @@ def authenticate(con, username, password):
         "SELECT * FROM users WHERE username=? AND hoat_dong=1", (username or "",)).fetchone()
     if not row or not verify_password(password, row["password"]):
         return None
-    # Nâng cấp hash yếu → mạnh ngay sau khi đăng nhập thành công
+    # Nâng cấp hash yếu → mạnh ngay sau khi đăng nhập thành công.
+    # (Bản cũ không bao giờ nâng cấp pbkdf2$ lên bcrypt kể cả khi có bcrypt.)
     try:
-        if not row["password"].startswith("pbkdf2$"):
-            if _HAS_BCRYPT and not row["password"].startswith("$2"):
-                con.execute("UPDATE users SET password=? WHERE id=?",
-                            (hash_password(password), row["id"]))
-                con.commit()
+        if _HAS_BCRYPT and not row["password"].startswith("$2"):
+            con.execute("UPDATE users SET password=? WHERE id=?",
+                        (hash_password(password), row["id"]))
+            con.commit()
     except sqlite3.Error:
         pass
     return {"id": row["id"], "username": row["username"],
@@ -1019,7 +1080,7 @@ def migrate_users(con):
     Chạy mỗi lần khởi động — rẻ (1 query PRAGMA) và an toàn (idempotent)."""
     them = []
     cols = {r["name"] for r in con.execute("PRAGMA table_info(users)")}
-    for ten, kieu, mac_dinh in (
+    for ten, kieu, _mac_dinh in (   # _mac_dinh: xem comment dưới — KHÔNG dùng
         ("email", "TEXT", "''"),
         ("khoa", "TEXT", "''"),
         ("lan_cuoi_dang_nhap", "TEXT", "NULL"),
@@ -1164,34 +1225,39 @@ def dam_bao_admin_mac_dinh(con):
 # 14. BACKUP & QUẢN LÝ KHÁCH HÀNG
 # ============================================================
 def backup_db(con=None, backup_dir=None):
-    """Sao lưu DB thành bản backup có timestamp.
-    Trả về (path_backup, dung_luong_mb) hoặc (None, lỗi)."""
-    import shutil
-    src = getattr(con, "execute", None) and None
-    # Lấy path từ connection SQLite
+    """Sao lưu DB thành bản backup có timestamp — dùng sqlite3 backup API.
+
+    Bản cũ shutil.copy2 file sống: nếu tiến trình khác ghi giữa chừng, bản
+    backup có thể hỏng/torn-page. Backup API cho bản sao nhất quán kể cả khi
+    DB đang được dùng (WAL).
+    Trả về (path_backup, dung_luong_mb) hoặc (None, lỗi).
+    """
+    src_path = None
     if con is not None:
         try:
-            src = con.execute("PRAGMA database_list").fetchone()[2]
+            src_path = con.execute("PRAGMA database_list").fetchone()[2]
         except Exception:
-            src = None
-    if src is None or not src or src == ":memory:":
-        raise ValueError("Không xác định được đường dẫn DB")
-    if not os.path.exists(src):
-        return None, tf("Không tìm thấy DB: {}", src)
+            src_path = None
+    if not src_path:
+        src_path = DB_PATH
+    if not src_path or src_path == ":memory:":
+        raise ValueError(t("Không xác định được đường dẫn DB"))
+    if not os.path.exists(src_path):
+        return None, tf("Không tìm thấy DB: {}", src_path)
     if backup_dir is None:
-        backup_dir = os.path.join(os.path.dirname(src), "backups")
+        backup_dir = os.path.join(os.path.dirname(src_path), "backups")
     os.makedirs(backup_dir, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    name = f"qlvt_backup_{ts}.db"
-    dst = os.path.join(backup_dir, name)
-    # Đóng transaction trước khi copy (WAL mode: copy cả -wal)
+    dst = os.path.join(backup_dir, f"qlvt_backup_{ts}.db")
+    src_con = sqlite3.connect(src_path)
     try:
-        con = sqlite3.connect(src)
-        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        con.close()
-    except Exception:
-        pass
-    shutil.copy2(src, dst)
+        dst_con = sqlite3.connect(dst)
+        try:
+            src_con.backup(dst_con)   # nhất quán, an toàn với DB đang mở
+        finally:
+            dst_con.close()
+    finally:
+        src_con.close()
     size_mb = os.path.getsize(dst) / 1024 / 1024
     return dst, size_mb
 
@@ -1278,6 +1344,7 @@ def xoa_khachhang(con, ma_kh):
         raise ValueError(tf("Không thể xóa KH {}: đã có {} phiếu/hợp đồng liên quan", ma_kh, n))
     con.execute("DELETE FROM dm_khachhang WHERE ma_kh=?", (ma_kh,))
     ghi_log(con, "", "XOA_KH", "dm_khachhang", ma_kh)
+    con.commit()   # bản cũ quên commit -> xóa không có tác dụng
 
 def ds_phieu(con, loai=None, limit=200):
     """Trả về lịch sử phiếu với tùy chọn lọc.
@@ -1288,9 +1355,9 @@ def ds_phieu(con, loai=None, limit=200):
         limit: Số lượng bản ghi tối đa (mặc định 200).
 
     Returns:
-        List of dicts/tuples chứa:
-        so_phieu, loai_phieu, ngay_phieu, ma_vt, ten_vt, dvt,
-        so_luong, don_gia, thanh_tien, ten_kh, khoa_nhan, nguoi_lap.
+        List[sqlite3.Row] chứa: so_phieu, loai_phieu, ngay_phieu, ma_vt,
+        ten_vt, dvt, so_luong, don_gia, thanh_tien, ten_kh, khoa_nhan,
+        nguoi_lap — sắp theo ngay_lap mới nhất, giới hạn `limit` dòng.
     """
     sql = """SELECT p.so_phieu, p.loai_phieu, p.ngay_phieu, p.ma_vt, v.ten_vt, v.dvt,
                     p.so_luong, p.don_gia, p.thanh_tien,
@@ -1329,216 +1396,294 @@ def ds_hop_dong_con_han(con, ma_kh=None):
 
 
 def luu_hop_dong(con, so_hd, ma_kh, ma_vt, so_luong, don_gia, ngay_ky=None,
-                 ngay_hieu_luc=None, ngay_het_han=None):
-    """Thêm/cập nhật hợp đồng. INSERT OR REPLACE INTO hop_dong."""
+                 ngay_hieu_luc=None, ngay_het_han=None, nguoi_thao_tac=""):
+    """Thêm/cập nhật hợp đồng (INSERT OR REPLACE theo khóa (so_hd, ma_vt)).
+
+    Có validate (bản cũ ghi thẳng, sai gì SQLite chịu nấy) và ghi audit_log.
+    Raises: ValueError khi thiếu/sai dữ liệu nghiệp vụ.
+    """
+    if not so_hd or not str(so_hd).strip():
+        raise ValueError(t("Thiếu số hợp đồng"))
+    if not ma_kh or not con.execute(
+            "SELECT 1 FROM dm_khachhang WHERE ma_kh=?", (ma_kh,)).fetchone():
+        raise ValueError(tf("Khách hàng '{}' không tồn tại", ma_kh))
+    if not ma_vt or not con.execute(
+            "SELECT 1 FROM dm_vattu WHERE ma_vt=?", (ma_vt,)).fetchone():
+        raise ValueError(tf("Mã vật tư '{}' không tồn tại", ma_vt))
+    try:
+        sl = float(so_luong)
+        gia = float(don_gia or 0)
+    except (TypeError, ValueError):
+        raise ValueError(t("Số lượng/đơn giá hợp đồng không phải là số")) from None
+    if sl <= 0:
+        raise ValueError(t("Số lượng hợp đồng phải là số dương"))
+    if gia < 0:
+        raise ValueError(t("Đơn giá hợp đồng không được âm"))
     con.execute(
         """INSERT OR REPLACE INTO hop_dong
            (so_hd, ma_kh, ma_vt, so_luong, don_gia, ngay_ky, ngay_hieu_luc, ngay_het_han)
            VALUES (?,?,?,?,?,?,?,?)""",
-        (so_hd, ma_kh, ma_vt, so_luong, don_gia, ngay_ky, ngay_hieu_luc, ngay_het_han),
+        (str(so_hd).strip(), ma_kh, ma_vt, sl, gia, ngay_ky, ngay_hieu_luc,
+         ngay_het_han),
     )
     con.commit()
+    ghi_log(con, nguoi_thao_tac, "LUU_HOP_DONG", "hop_dong",
+            f"{so_hd} | {ma_kh} | {ma_vt} x{fmt_sl(sl)}")
 
 
 # ============================================================
 # 16. XUẤT PDF
 # ============================================================
 
-def xuat_pdf(con, duong_dan_pdf, lang=None):
-    """Xuất biên bản giao hàng ra file PDF.
-    Dùng reportlab. Trả về đường dẫn file PDF đã tạo.
-    PDF format: A4, font Helvetica, bảng biên bản giao hàng với:
-    - Tiêu đề: BIÊN BẢN GIAO HÀNG
-    - Thông tin: số phiếu, ngày, số hợp đồng, khách hàng, địa chỉ, MST, khoa nhận
-    - Bảng: STT | Tên vật tư | Mã VT | ĐVT | Tổng SL | Đơn giá | Thành tiền
-    - Tổng cộng, thuế 8%, tổng thanh toán
-    - Dòng chữ ký
-    Lưu vào dist/bienban/ (tạo thư mục nếu chưa có). Trả về (duong_dan_pdf, loi)."""
+_PDF_FONTS = None
+
+
+def dang_ky_font_pdf():
+    """Đăng ký font TTF hỗ trợ tiếng Việt cho reportlab. Trả về (regular, bold).
+
+    Helvetica/WinAnsi mặc định của reportlab THIẾU glyph tiếng Việt (ế, ậ, đ…)
+    → biên bản in ra ô vuông. Windows có Arial/Segoe/Times; Linux có DejaVu.
+    Fallback cuối: Helvetica (kèm cảnh giác: tiếng Việt sẽ lỗi glyph).
+    GUI (app_desktop) dùng chung hàm này — một nguồn sự thật.
+    """
+    global _PDF_FONTS
+    if _PDF_FONTS:
+        return _PDF_FONTS
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.lib.fonts import addMapping
+    candidates = [
+        ("C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/arialbd.ttf"),
+        ("C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/segoeuib.ttf"),
+        ("C:/Windows/Fonts/times.ttf", "C:/Windows/Fonts/timesbd.ttf"),
+        ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    ]
+    for reg, bold in candidates:
+        if os.path.exists(reg) and os.path.exists(bold):
+            try:
+                pdfmetrics.registerFont(TTFont("Uni", reg))
+                pdfmetrics.registerFont(TTFont("Uni-Bold", bold))
+                for b, name in ((0, "Uni"), (1, "Uni-Bold")):
+                    addMapping("Uni", b, 0, name)
+                    addMapping("Uni", b, 1, name)
+                _PDF_FONTS = ("Uni", "Uni-Bold")
+                return _PDF_FONTS
+            except Exception:
+                continue
+    _PDF_FONTS = ("Helvetica", "Helvetica-Bold")
+    return _PDF_FONTS
+
+
+def _pdf_style():
+    """Style reportlab dùng font đã đăng ký (gọi SAU dang_ky_font_pdf)."""
+    from reportlab.lib.styles import ParagraphStyle
+    fname, fbold = dang_ky_font_pdf()
+    return {
+        "title": ParagraphStyle("T", fontName=fbold, fontSize=16,
+                                alignment=1, spaceAfter=10),
+        "center": ParagraphStyle("Ct", fontName=fname, fontSize=11,
+                                 alignment=1, spaceAfter=2),
+        "info": ParagraphStyle("I", fontName=fname, fontSize=10,
+                               spaceAfter=2),
+        "right": ParagraphStyle("R", fontName=fname, fontSize=10,
+                                alignment=2),
+        "sig": ParagraphStyle("S", fontName=fname, fontSize=10,
+                              alignment=1),
+    }
+
+
+def _duong_dan_pdf(duong_dan_pdf, subdir, ten_mac_dinh):
+    """Chuẩn hóa đường dẫn xuất: tuyệt đối giữ nguyên; tương đối/tên trần đặt
+    vào <thư mục module>/dist/<subdir>/; rỗng -> tempdir."""
+    if not duong_dan_pdf:
+        import tempfile
+        return os.path.join(tempfile.gettempdir(), ten_mac_dinh)
+    if os.path.isabs(duong_dan_pdf):
+        return duong_dan_pdf
+    dist_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "dist", subdir)
+    os.makedirs(dist_dir, exist_ok=True)
+    return os.path.join(dist_dir, duong_dan_pdf)
+
+
+def xuat_pdf(con, duong_dan_pdf=None, so_phieu=None, vat_pct=8.0, lang=None):
+    """Xuất biên bản giao hàng ra PDF (reportlab, font Unicode tiếng Việt).
+
+    Args:
+        con: kết nối SQLite.
+        duong_dan_pdf: đường dẫn file đích (tuyệt đối, hoặc tên file để đặt
+            vào dist/bienban/; None/"" -> thư mục tạm).
+        so_phieu: phiếu cần in. None -> phiếu XUAT gần nhất (hành vi cũ).
+        vat_pct: thuế suất % (mặc định 8 — hết hardcode).
+        lang: 'vi'/'en' — dịch nhãn; None -> dùng ngôn ngữ hiện hành.
+
+    Returns:
+        (duong_dan_pdf, None) nếu thành công; (None, thông_báo_lỗi) nếu lỗi.
+    """
     try:
+        from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.units import mm
-        from reportlab.lib import colors
-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import (Paragraph, SimpleDocTemplate, Spacer,
+                                        Table, TableStyle)
     except ImportError:
         return None, t("Thiếu thư viện reportlab. Cài: pip install reportlab")
 
-    # Lấy dữ liệu biên bản
-    bb = bien_ban(con)
-    if not bb:
-        return None, t("Không tìm thấy phiếu xuất nào")
-
-    # Tạo thư mục dist/bienban/
-    dist_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist", "bienban")
-    os.makedirs(dist_dir, exist_ok=True)
-
-    # Nếu duong_dan_pdf chỉ là tên file, thêm đường dẫn dist/bienban/
-    if not duong_dan_pdf:
-        import tempfile
-        duong_dan_pdf = os.path.join(tempfile.gettempdir(), "baocao.pdf")
-    if not os.path.isabs(duong_dan_pdf):
-        duong_dan_pdf = os.path.join(dist_dir, duong_dan_pdf)
-
-    # Tạo PDF
-    doc = SimpleDocTemplate(duong_dan_pdf, pagesize=A4,
-                            leftMargin=15*mm, rightMargin=15*mm,
-                            topMargin=15*mm, bottomMargin=15*mm)
-    styles = getSampleStyleSheet()
-    elements = []
-
-    # Tiêu đề
-    title_style = ParagraphStyle('Title', parent=styles['Title'], fontSize=16, alignment=1, spaceAfter=10)
-    elements.append(Paragraph("BIÊN BẢN GIAO HÀNG", title_style))
-    elements.append(Spacer(1, 5*mm))
-
-    # Thông tin
-    info_style = ParagraphStyle('Info', parent=styles['Normal'], fontSize=10, spaceAfter=2)
-    elements.append(Paragraph(f"<b>Số phiếu:</b> {bb['so_phieu']}", info_style))
-    # Sử dụng lang để hiển thị thông tin phù hợp với ngôn ngữ
-    if lang:
-        ng_label = t("Ngày") if lang == "vi" else "Date"
-        kh_label = t("Khách hàng") if lang == "vi" else "Customer"
-        dc_label = t("Địa chỉ") if lang == "vi" else "Address"
-        mst_label = t("MST") if lang == "vi" else "MST"
-        kn_label = t("Khoa nhận") if lang == "vi" else "Receiving dept"
-    else:
-        ng_label = "Ngày"
-        kh_label = "Khách hàng"
-        dc_label = "Địa chỉ"
-        mst_label = "MST"
-        kn_label = "Khoa nhận"
-    elements.append(Paragraph(f"<b>{ng_label}:</b> {bb['ngay']}/{bb['thang']}/{bb['nam']}", info_style))
-    elements.append(Paragraph(f"<b>{kh_label}:</b> {bb['ten_kh']}", info_style))
-    elements.append(Paragraph(f"<b>{dc_label}:</b> {bb['dia_chi']}", info_style))
-    elements.append(Paragraph(f"<b>{mst_label}:</b> {bb['ma_so_thue']}", info_style))
-    elements.append(Paragraph(f"<b>{kn_label}:</b> {bb['khoa_nhan']}", info_style))
-    elements.append(Spacer(1, 5*mm))
-
-    # Bảng
-    data = [["STT", "Tên vật tư", "Mã VT", "ĐVT", "Tổng SL", "Đơn giá", "Thành tiền"]]
-    for i, item in enumerate(bb["items"], 1):
-        data.append([
-            str(i),
-            f"{item['ten_vt']} ({item['ma_vt']})",
-            item["ma_vt"],
-            item["dvt"],
-            f"{item['so_luong']:.0f}",
-            f"{item['don_gia']:,.0f}",
-            f"{item['thanh_tien']:,.0f}",
-        ])
-    # Tổng cộng
-    data.append(["", "", "", "", "", "Tổng cộng:", f"{bb['tong']:,.0f}"])
-    data.append(["", "", "", "", "", "Thuế 8%:", f"{bb['vat']:,.0f}"])
-    data.append(["", "", "", "", "", "Tổng thanh toán:", f"{bb['tong_cong']:,.0f}"])
-
-    table = Table(data, colWidths=[10*mm, 50*mm, 20*mm, 15*mm, 20*mm, 25*mm, 30*mm])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-    ]))
-    elements.append(table)
-    elements.append(Spacer(1, 5*mm))
-
-    # Bằng chữ
-    elements.append(Paragraph(f"<b>Bằng chữ:</b> {bb['bang_chu']}", info_style))
-    elements.append(Spacer(1, 10*mm))
-
-    # Chữ ký
-    sig_style = ParagraphStyle('Sig', parent=styles['Normal'], fontSize=10, alignment=1)
-    elements.append(Paragraph("Người lập", sig_style))
-    elements.append(Spacer(1, 15*mm))
-    elements.append(Paragraph(f"<i>{bb['nguoi_lap']}</i>", sig_style))
-
-    doc.build(elements)
-    return duong_dan_pdf, None
-
-
-def xuat_baocao_pdf(con, loai, nam, duong_dan_pdf, lang=None):
-    """Xuất báo cáo ra PDF.
-    loai: 'm' (tháng), 'q' (quý), 's' (thị phần)
-    Dùng reportlab tạo PDF với bảng báo cáo tương ứng.
-    Trả về (duong_dan_pdf, loi)."""
+    doi_lang = lang is not None and lang != get_lang()
+    lang_cu = get_lang()
+    if doi_lang:
+        set_lang(lang)
     try:
+        bb = bien_ban(con, so_phieu, vat_pct=vat_pct)
+        if not bb:
+            return None, t("Không tìm thấy phiếu xuất nào")
+        path = _duong_dan_pdf(duong_dan_pdf, "bienban", "bienban.pdf")
+        st = _pdf_style()
+        fname, fbold = dang_ky_font_pdf()
+
+        doc = SimpleDocTemplate(path, pagesize=A4, leftMargin=15 * mm,
+                                rightMargin=15 * mm, topMargin=15 * mm,
+                                bottomMargin=15 * mm)
+        el = [Paragraph(t("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM"), st["center"]),
+              Paragraph(t("Độc lập - Tự do - Hạnh phúc"), st["center"]),
+              Spacer(1, 3 * mm),
+              Paragraph(t("BIÊN BẢN GIAO HÀNG"), st["title"]),
+              Paragraph(tf("Số: {} /BBGH", bb["so_phieu"]), st["center"]),
+              Paragraph(tf("Ngày {} tháng {} năm {}", bb["ngay"], bb["thang"],
+                           bb["nam"]), st["info"])]
+        if bb["so_hop_dong"]:
+            el.append(Paragraph(tf("Số hợp đồng: {}", bb["so_hop_dong"]),
+                                st["info"]))
+        el.append(Paragraph(tf("Khách hàng: {}", bb["ten_kh"] or "—"),
+                            st["info"]))
+        if bb["dia_chi"]:
+            el.append(Paragraph(tf("Địa chỉ: {}", bb["dia_chi"]), st["info"]))
+        if bb["ma_so_thue"]:
+            el.append(Paragraph(tf("Mã số thuế: {}", bb["ma_so_thue"]),
+                                st["info"]))
+        if bb["khoa_nhan"]:
+            el.append(Paragraph(tf("Khoa nhận: {}", bb["khoa_nhan"]),
+                                st["info"]))
+        el.append(Spacer(1, 4 * mm))
+
+        data = [["STT", t("Tên vật tư"), t("Mã VT"), t("ĐVT"),
+                 t("Tổng SL"), t("Đơn giá"), t("Thành tiền")]]
+        for i, item in enumerate(bb["items"], 1):
+            data.append([str(i), item["ten_vt"], item["ma_vt"],
+                         item["dvt"] or "", fmt_sl(item["so_luong"]),
+                         f"{item['don_gia']:,.0f}",
+                         f"{item['thanh_tien']:,.0f}"])
+        tbl = Table(data, colWidths=[10 * mm, 55 * mm, 22 * mm, 15 * mm,
+                                     20 * mm, 28 * mm, 30 * mm], repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), fbold),
+            ("FONTNAME", (0, 1), (-1, -1), fname),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#dfe6ea")),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        el.append(tbl)
+        el.append(Spacer(1, 4 * mm))
+        el.append(Paragraph(tf("Tổng cộng: {} ₫", f"{bb['tong']:,.0f}"),
+                            st["right"]))
+        el.append(Paragraph(
+            tf("Thuế GTGT {}%: {} ₫", f"{bb['vat_pct']:g}",
+               f"{bb['vat']:,.0f}"), st["right"]))
+        el.append(Paragraph(
+            tf("Tổng thanh toán: {} ₫", f"{bb['tong_cong']:,.0f}"),
+            st["right"]))
+        el.append(Paragraph(tf("Bằng chữ: {}", bb["bang_chu"]), st["info"]))
+        el.append(Spacer(1, 10 * mm))
+        sig = Table([[t("ĐẠI DIỆN BÊN NHẬN"), t("ĐẠI DIỆN BÊN GIAO")],
+                     [t("(Ký, ghi rõ họ tên)"),
+                      f"{t('(Ký, ghi rõ họ tên)')}\n\n{bb['nguoi_lap']}"]],
+                    colWidths=[90 * mm, 90 * mm])
+        sig.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, -1), fname),
+            ("FONTSIZE", (0, 0), (-1, -1), 10),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ]))
+        el.append(sig)
+        doc.build(el)
+        return path, None
+    except Exception as e:
+        return None, f"{type(e).__name__}: {e}"
+    finally:
+        if doi_lang:
+            set_lang(lang_cu)
+
+
+def xuat_baocao_pdf(con, loai, nam, duong_dan_pdf=None, lang=None):
+    """Xuất báo cáo ra PDF. loai: 'm' (tháng), 'q' (quý), 's' (thị phần).
+
+    Font Unicode tiếng Việt; lang: 'vi'/'en' (None -> ngôn ngữ hiện hành).
+    Trả về (duong_dan_pdf, None) nếu OK; (None, lỗi) nếu lỗi.
+    """
+    try:
+        from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.units import mm
-        from reportlab.lib import colors
-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import (Paragraph, SimpleDocTemplate, Spacer,
+                                        Table, TableStyle)
     except ImportError:
         return None, t("Thiếu thư viện reportlab. Cài: pip install reportlab")
 
-    # Tạo thư mục dist/baocao/
-    dist_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist", "baocao")
-    os.makedirs(dist_dir, exist_ok=True)
+    doi_lang = lang is not None and lang != get_lang()
+    lang_cu = get_lang()
+    if doi_lang:
+        set_lang(lang)
+    try:
+        if loai == "m":
+            title = tf("BÁO CÁO DOANH SỐ THÁNG NĂM {}", nam)
+            rows_src = doanh_so_thang(con, nam)
+            header = [t("Tháng"), t("Số lượng"), t("Doanh số")]
+            data = [header] + [[t("Tháng") + f" {int(r['thang'])}",
+                                 fmt_sl(r["so_luong"]),
+                                 f"{r['doanh_so']:,.0f}"] for r in rows_src]
+        elif loai == "q":
+            title = tf("BÁO CÁO DOANH SỐ QUÝ NĂM {}", nam)
+            quy = {}
+            for r in doanh_so_thang(con, nam):
+                q = (int(r["thang"]) - 1) // 3 + 1
+                d = quy.setdefault(q, {"so_luong": 0, "doanh_so": 0})
+                d["so_luong"] += r["so_luong"] or 0
+                d["doanh_so"] += r["doanh_so"] or 0
+            header = [t("Quý"), t("Số lượng"), t("Doanh số")]
+            data = [header] + [[tf("Quý {}", q), fmt_sl(d["so_luong"]),
+                                 f"{d['doanh_so']:,.0f}"]
+                                for q, d in sorted(quy.items())]
+        elif loai == "s":
+            title = tf("BÁO CÁO THỊ PHẦN NĂM {}", nam)
+            header = [t("Khách hàng"), t("Doanh số"), t("Tỷ lệ (%)")]
+            data = [header] + [[r["ten_kh"], f"{r['doanh_so']:,.0f}",
+                                 f"{r['ti_le']:.1f}%"] for r in thi_phan(con, nam)]
+        else:
+            return None, tf("Loại báo cáo không hợp lệ: {}", loai)
+        if len(data) <= 1:
+            return None, t("Chưa có dữ liệu bán hàng trong năm.")
 
-    if not duong_dan_pdf:
-        import tempfile
-        duong_dan_pdf = os.path.join(tempfile.gettempdir(), "baocao.pdf")
-    if not os.path.isabs(duong_dan_pdf):
-        duong_dan_pdf = os.path.join(dist_dir, duong_dan_pdf)
-
-    doc = SimpleDocTemplate(duong_dan_pdf, pagesize=A4,
-                            leftMargin=15*mm, rightMargin=15*mm,
-                            topMargin=15*mm, bottomMargin=15*mm)
-    styles = getSampleStyleSheet()
-    elements = []
-
-    title_style = ParagraphStyle('Title', parent=styles['Title'], fontSize=16, alignment=1, spaceAfter=10)
-
-    if loai == 'm':
-        # Báo cáo tháng
-        elements.append(Paragraph(f"BÁO CÁO DOANH SỐ THÁNG NĂM {nam}", title_style))
-        elements.append(Spacer(1, 5*mm))
-        rows = doanh_so_thang(con, nam)
-        data = [["Tháng", "Số lượng", "Doanh số"]]
-        for r in rows:
-            data.append([r["thang"], f"{r['so_luong']:.0f}", f"{r['doanh_so']:,.0f}"])
-    elif loai == 'q':
-        # Báo cáo quý
-        elements.append(Paragraph(f"BÁO CÁO DOANH SỐ QUÝ NĂM {nam}", title_style))
-        elements.append(Spacer(1, 5*mm))
-        rows = doanh_so_thang(con, nam)
-        # Gom theo quý
-        quy = {}
-        for r in rows:
-            thang = int(r["thang"])
-            q = (thang - 1) // 3 + 1
-            if q not in quy:
-                quy[q] = {"so_luong": 0, "doanh_so": 0}
-            quy[q]["so_luong"] += r["so_luong"]
-            quy[q]["doanh_so"] += r["doanh_so"]
-        data = [["Quý", "Số lượng", "Doanh số"]]
-        for q in sorted(quy.keys()):
-            data.append([f"Quý {q}", f"{quy[q]['so_luong']:.0f}", f"{quy[q]['doanh_so']:,.0f}"])
-    elif loai == 's':
-        # Báo cáo thị phần
-        elements.append(Paragraph(f"BÁO CÁO THỊ PHẦN NĂM {nam}", title_style))
-        elements.append(Spacer(1, 5*mm))
-        rows = thi_phan(con, nam)
-        data = [["Khách hàng", "Doanh số", "Tỷ lệ (%)"]]
-        for r in rows:
-            data.append([r["ten_kh"], f"{r['doanh_so']:,.0f}", f"{r['ti_le']:.1f}%"])
-    else:
-        return None, f"Loại báo cáo không hợp lệ: {loai}"
-
-    table = Table(data, colWidths=[40*mm, 40*mm, 40*mm])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-    ]))
-    elements.append(table)
-
-    doc.build(elements)
-    return duong_dan_pdf, None
+        path = _duong_dan_pdf(duong_dan_pdf, "baocao", "baocao.pdf")
+        fname, fbold = dang_ky_font_pdf()
+        st = _pdf_style()
+        doc = SimpleDocTemplate(path, pagesize=A4, leftMargin=15 * mm,
+                                rightMargin=15 * mm, topMargin=15 * mm,
+                                bottomMargin=15 * mm)
+        tbl = Table(data, colWidths=[60 * mm, 40 * mm, 50 * mm], repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), fbold),
+            ("FONTNAME", (0, 1), (-1, -1), fname),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#dfe6ea")),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ]))
+        doc.build([Paragraph(title, st["title"]), Spacer(1, 4 * mm), tbl])
+        return path, None
+    except Exception as e:
+        return None, f"{type(e).__name__}: {e}"
+    finally:
+        if doi_lang:
+            set_lang(lang_cu)
